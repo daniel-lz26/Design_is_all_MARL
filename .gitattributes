@@ -1,0 +1,5 @@
+# Normalize line endings: the lab PC and robots run Linux, and ruff formats with LF.
+* text=auto eol=lf
+*.png binary
+*.gif binary
+*.pt binary
