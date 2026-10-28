@@ -1,0 +1,11 @@
+# Runtime dependencies for som-marl (see CLAUDE.md "Tech stack").
+# rclpy is NOT here: it comes from the system ROS2 Humble install on the lab PC.
+numpy>=1.26
+torch>=2.2
+pettingzoo>=1.24
+gymnasium>=0.29
+pydantic>=2.6
+pyyaml>=6.0
+matplotlib>=3.8
+tensorboard>=2.16
+pygame>=2.5          # optional: live dashboard
