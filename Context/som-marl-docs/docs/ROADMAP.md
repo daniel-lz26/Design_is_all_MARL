@@ -13,24 +13,24 @@ detailed in `HARDWARE_INTERFACE.md §5`, and the hardware team can start them no
 
 ## M0 · Scaffold (Oct 28) · L
 
-- [ ] `pyproject.toml` (src layout, package `som`, Python ≥3.10), Makefile, ruff, pytest, pre-commit, `.gitignore`
-- [ ] Empty module tree exactly as in `ARCHITECTURE.md §2`, with module docstrings stating each responsibility
-- [ ] `som.config.schema` with pydantic models (`extra="forbid"`) for Layout, Scenario, Env, Reward, Train, Deploy
-- [ ] `configs/layouts/arena_13x6ft.yaml` (placeholders from HARDWARE_INTERFACE §3)
-- [ ] `configs/scenarios/abstract_10.yaml` (from LEGACY_REVIEW; placeholders marked)
+- [x] `pyproject.toml` (src layout, package `som`, Python ≥3.10), Makefile, ruff, pytest, pre-commit, `.gitignore`
+- [x] Empty module tree exactly as in `ARCHITECTURE.md §2`, with module docstrings stating each responsibility
+- [x] `som.config.schema` with pydantic models (`extra="forbid"`) for Layout, Scenario, Env, Reward, Train, Deploy
+- [x] `configs/layouts/arena_13x6ft.yaml` (placeholders from HARDWARE_INTERFACE §3)
+- [x] `configs/scenarios/abstract_10.yaml` (from LEGACY_REVIEW; placeholders marked)
 
 **Accept:** `make install && make lint && make test` pass on a clean checkout; every config file loads
 through its schema in a test.
 
 ## M1 · Core, sim, baselines (Oct 29 – Nov 2) · L
 
-- [ ] `som.core`: ids, layout, order state machine, events (**including `MachineDown`/`MachineUp`**),
+- [x] `som.core`: ids, layout, order state machine, events (**including `MachineDown`/`MachineUp`**),
       commands, decisions, `FactoryCore`, invariants
-- [ ] `som.sim`: `StraightLineTravel` (with travel-time noise), `SimRuntime`, scenario builder (fixed + generated)
-- [ ] `som.policies`: Policy protocol, random, heuristics (robot FIFO/EDD/NEAREST/MIN_SLACK × machine FIFO/EDD/SPT)
-- [ ] `som.eval`: metrics, evaluate, compare (markdown + csv), Gantt plot
-- [ ] `som.viz.replay`: animate an episode log over the arena layout
-- [ ] Tests: order conservation, capacity, reservations, dock locks, `RobotFailed` recovery,
+- [x] `som.sim`: `StraightLineTravel` (with travel-time noise), `SimRuntime`, scenario builder (fixed + generated)
+- [x] `som.policies`: Policy protocol, random, heuristics (robot FIFO/EDD/NEAREST/MIN_SLACK × machine FIFO/EDD/SPT)
+- [x] `som.eval`: metrics, evaluate, compare (markdown + csv), Gantt plot
+- [x] `som.viz.replay`: animate an episode log over the arena layout
+- [x] Tests: order conservation, capacity, reservations, dock locks, `RobotFailed` recovery,
       machine down/up pause-and-resume, determinism (same seed → identical log), heuristics complete `abstract_10`
 
 **Accept:** `make baselines` prints the baseline table for `abstract_10` over 20 seeds;

@@ -74,9 +74,10 @@ som-marl/
 │   │   ├── ids.py                # RobotId, MachineId, StationId, OrderId (NewType str) + prefix helpers
 │   │   ├── layout.py             # Station, Pose2D, Layout (from LayoutCfg)
 │   │   ├── order.py              # JobType(route), Order(state machine: WAITING/RESERVED/IN_TRANSIT/QUEUED/PROCESSING/DONE)
-│   │   ├── events.py             # OrderReleased, RobotArrived, RobotFailed, ProcessDone, MachineDown, MachineUp, Tick
-│   │   ├── commands.py           # MoveRobot, StartProcess, CancelRobot
+│   │   ├── events.py             # OrderReleased, RobotArrived, DockReleased, RobotFailed, ProcessDone, MachineDown, MachineUp, Tick
+│   │   ├── commands.py           # MoveRobot, HoldDock, StartProcess, CancelRobot
 │   │   ├── decisions.py          # DecisionRequest, Candidate, the WAIT sentinel
+│   │   ├── history.py            # EpisodeLog (metrics/replay) + CoreSnapshot views; plain data
 │   │   ├── factory.py            # FactoryCore
 │   │   └── invariants.py         # check_invariants(core) -> list[str]; called in tests + debug mode
 │   ├── sim/
@@ -90,7 +91,7 @@ som-marl/
 │   │   ├── global_state.py       # fixed-size critic state, padded to max_robots/max_orders
 │   │   └── rewards.py            # RewardFn: team/local, ≤4 terms, computed from core deltas
 │   ├── policies/
-│   │   ├── base.py               # Policy protocol: act(obs_by_agent, mask_by_agent) -> actions
+│   │   ├── base.py               # Policy protocol: decide(request, snapshot) -> Candidate | WAIT
 │   │   ├── heuristics.py         # robot: FIFO, EDD, NEAREST, MIN_SLACK; machine: FIFO, EDD, SPT
 │   │   ├── random_policy.py
 │   │   └── learned.py            # LearnedPolicy.from_artifact(dir)
@@ -170,11 +171,13 @@ RELEASED@SRC ──(robot reserves)──► RESERVED ──(robot docks at pick
  PROCESSING ──(ProcessDone)──► WAITING_PICKUP@machine (back into transport pool)   DELIVERED
 ```
 
-- **Robot**: `id`, `status ∈ {IDLE, TO_PICKUP, TO_DROPOFF, WAITING_DOCK}`, `carrying: OrderId | None`,
+- **Robot**: `id`, `status ∈ {IDLE, TO_PICKUP, TO_DROPOFF, WAITING_DOCK, DOCKING}`, `carrying: OrderId | None`,
   `task: TransportTask | None`, `last_station`, `pose` (an estimate, informational only).
   Capacity is 1. A robot holds a **reservation** on its order from assignment until drop-off.
 - **Dock lock**: each station dock admits one robot at a time. Others wait (`WAITING_DOCK`). This is
-  modeled in training too, so learned policies see congestion.
+  modeled in training too, so learned policies see congestion. On arrival with a free dock the robot
+  holds it (`DOCKING`) for the layout's `dock_overhead_s`; the transfer (pickup or drop-off) happens
+  when the hold ends (`DockReleased`), then the next waiting robot is granted the dock (FIFO).
 
 ### 3.2 FactoryCore API [contract]
 
@@ -200,9 +203,13 @@ class FactoryCore:
     def done(self) -> bool                   # all orders delivered
 ```
 
-- `Command`s are **intent** (`MoveRobot(robot, station, purpose)`, `StartProcess(machine, order, duration)`).
-  Runtimes turn them into future events: SimRuntime schedules `RobotArrived` at `now + travel_time`;
-  LiveRuntime sends a ROS goal and waits for the result.
+- `Command`s are **intent** (`MoveRobot(robot, station, purpose, goal_id)`,
+  `HoldDock(robot, station, duration, goal_id)`, `StartProcess(machine, order, duration, token)`).
+  Runtimes turn them into future events: SimRuntime schedules `RobotArrived` at `now + travel_time`,
+  `DockReleased` at `now + duration`, `ProcessDone` at `now + duration`; LiveRuntime sends a ROS goal
+  and waits for the result, and runs the dock hold and machine runs as timers.
+- Robot events echo the command's `goal_id` and `ProcessDone` echoes the run `token`. The core ignores
+  stale events (an arrival after `RobotFailed`, a `ProcessDone` for a run paused by `MachineDown`).
 - `RobotFailed(robot, reason)` (goal aborted/timeout) returns the order to its previous station and
   frees the reservation. The core must handle this; the real lab will produce it.
 - `MachineDown(machine)` / `MachineUp(machine)` (built in M1, used only in the D15 stretch): a down machine
@@ -231,7 +238,8 @@ Agents that are busy (traveling, processing) are **not** in `pending_decisions`.
 ## 4. Simulation runtime (`som.sim`)
 
 - `TravelModel.estimate(from_pose, to_pose) -> seconds`. Default `StraightLineTravel`:
-  `rotate(Δθ)/ω_eff + dist/v_eff + dock_overhead`, with `v_eff≈0.15 m/s` and `ω_eff≈1.0 rad/s`, plus
+  `rotate(Δθ)/ω_eff + dist/v_eff`, with `v_eff≈0.15 m/s` and `ω_eff≈1.0 rad/s` (the dock overhead is
+  the core's `HoldDock`, not part of travel), plus
   optional lognormal noise (σ configurable) so policies tolerate real-world timing variance.
   **Calibrate `v_eff` and the overhead from real controller runs in M4** and record them in the layout YAML.
 - `SimRuntime` owns a heap of `(time, seq, Event)`. `advance_to_next_decision()` pops events, feeds
@@ -385,7 +393,7 @@ its Pi (numpy forward pass, no torch). The artifact format and obs encoders alre
 
 `LiveRuntime` loop (about 10 Hz):
 1. `poll()` the backend → map `GoalSucceeded` to `RobotArrived` and `GoalFailed` to `RobotFailed`, then `core.apply`.
-2. Fire due virtual-machine timers → `ProcessDone`.
+2. Fire due timers: virtual machines → `ProcessDone`, dock holds → `DockReleased`.
 3. Release orders whose `release_time ≤ now − t0`.
 4. For `pending_decisions()`, build obs exactly as `SomParallelEnv` does (shared encoder functions),
    call the policy, `core.assign`.
