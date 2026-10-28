@@ -219,5 +219,5 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Planning docs (local only)
-Context/
+# Claude Code instructions stay local
+CLAUDE.md
