@@ -221,3 +221,9 @@ __marimo__/
 
 # Claude Code instructions stay local
 CLAUDE.md
+
+# som-marl
+runs/
+*.pt
+!reports/**/*.pt
+legacy/reference/
