@@ -1,0 +1,26 @@
+# Training distribution: 10-order streams jittered around abstract_10 (ARCHITECTURE.md section 6).
+# Never evaluate the headline result on this; abstract_10 is the test schedule.
+# The centers derive from abstract_10, whose releases and process times are PLACEHOLDER values,
+# so these ranges are PLACEHOLDER too until the real 10-order config is found.
+name: random_10
+kind: generated
+horizon: 1600
+
+default_process_times:
+  Turning: 30    # PLACEHOLDER
+  Grinding: 20   # PLACEHOLDER
+  Milling: 40    # PLACEHOLDER
+  Drilling: 10   # PLACEHOLDER
+
+job_types:
+  P1: {part: Shaft,  route: [Turning, Grinding]}
+  P2: {part: Flange, route: [Turning, Milling, Drilling]}
+  P3: {part: Plate,  route: [Milling]}
+  P4: {part: Frame,  route: [Milling, Drilling]}
+
+generator:
+  n_orders: 10
+  interarrival_s: [20.5, 30.7]   # PLACEHOLDER: abstract_10 mean gap 25.6 s, +/-20%
+  due_slack_s: [115.0, 155.0]    # PLACEHOLDER: due - release = 135 s, +/-15%
+  job_mix: {P1: 2, P2: 3, P3: 3, P4: 2}   # abstract_10 job counts
+  process_time_jitter: 0.2       # +/-20% around default_process_times
