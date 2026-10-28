@@ -43,8 +43,12 @@ extend-exclude = ["legacy", "Context", "runs"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
+[tool.ruff.lint.isort]
+known-local-folder = ["helpers"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 addopts = "-ra --import-mode=importlib"
 
 [tool.mypy]
