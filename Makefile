@@ -1,10 +1,6 @@
 # som-marl task runner. Uses the project venv if present, otherwise the active python.
-ifeq ($(OS),Windows_NT)
-VENV_PY := .venv/Scripts/python.exe
-else
-VENV_PY := .venv/bin/python
-endif
-PYTHON ?= $(if $(wildcard $(VENV_PY)),$(VENV_PY),python)
+VENV_PY := $(firstword $(wildcard .venv/bin/python .venv/Scripts/python.exe))
+PYTHON ?= $(or $(VENV_PY),python)
 
 .PHONY: install test lint format typecheck
 
