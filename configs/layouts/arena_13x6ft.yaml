@@ -1,0 +1,54 @@
+# 13 x 6 ft lab arena. Single source of truth for station geometry (CLAUDE.md rule 3).
+# Frame "arena": origin at the floor-tape corner "O", +x along the 13 ft side, +y along the 6 ft side.
+# Poses are [x_m, y_m, theta_rad]. Values from HARDWARE_INTERFACE.md section 3; every pose is a
+# PLACEHOLDER until the hardware team measures the taped arena (task H3).
+name: arena_13x6ft
+arena:
+  frame: arena
+  size_m: [3.96, 1.83]
+
+stations:
+  SRC:
+    kind: source
+    dock: [0.35, 0.92, 0.0]    # PLACEHOLDER
+    queue: [0.35, 0.60, 0.0]   # PLACEHOLDER
+  TURNING:
+    kind: machine
+    process: Turning
+    dock: [1.30, 1.45, 0.0]    # PLACEHOLDER
+    queue: [1.00, 1.45, 0.0]   # PLACEHOLDER
+    input_capacity: 5
+  GRINDING:
+    kind: machine
+    process: Grinding
+    dock: [2.30, 1.45, 0.0]    # PLACEHOLDER
+    queue: [2.00, 1.45, 0.0]   # PLACEHOLDER
+    input_capacity: 5
+  MILLING:
+    kind: machine
+    process: Milling
+    dock: [1.30, 0.38, 0.0]    # PLACEHOLDER
+    queue: [1.00, 0.38, 0.0]   # PLACEHOLDER
+    input_capacity: 5
+  DRILLING:
+    kind: machine
+    process: Drilling
+    dock: [2.30, 0.38, 0.0]    # PLACEHOLDER
+    queue: [2.00, 0.38, 0.0]   # PLACEHOLDER
+    input_capacity: 5
+  SINK:
+    kind: sink
+    dock: [3.60, 0.92, 0.0]    # PLACEHOLDER
+    queue: [3.60, 1.24, 0.0]   # PLACEHOLDER
+
+robots:
+  tb1: {start: [0.35, 1.45, 0.0]}       # PLACEHOLDER
+  tb2: {start: [0.35, 0.38, 0.0]}       # PLACEHOLDER
+  tb3: {start: [3.60, 1.45, 3.14159]}   # PLACEHOLDER
+  tb4: {start: [3.60, 0.38, 3.14159]}   # PLACEHOLDER
+
+# Effective speeds for the sim travel model. PLACEHOLDER: calibrate from logged runs in M4.
+travel_calibration:
+  v_eff: 0.15           # PLACEHOLDER m/s
+  w_eff: 1.0            # PLACEHOLDER rad/s
+  dock_overhead_s: 2.0  # PLACEHOLDER s

@@ -1,0 +1,35 @@
+# The SCCUR abstract's 10-order schedule (headline evaluation; never trained on).
+# Recovered from the legacy training log (LEGACY_REVIEW.md): order ids, job types and due times are
+# real. Release and process times were NOT in the log. Until the original
+# configs/ippo_delivery_10orders.yaml is found they follow the documented placeholder rule:
+#   release = max(0, due - 135); process times = legacy defaults.
+# Times are seconds.
+name: abstract_10
+kind: fixed
+horizon: 1600
+
+# PLACEHOLDER: legacy default.yaml defaults, not the abstract run's actual values.
+default_process_times:
+  Turning: 30    # PLACEHOLDER
+  Grinding: 20   # PLACEHOLDER
+  Milling: 40    # PLACEHOLDER
+  Drilling: 10   # PLACEHOLDER
+
+job_types:
+  P1: {part: Shaft,  route: [Turning, Grinding]}
+  P2: {part: Flange, route: [Turning, Milling, Drilling]}
+  P3: {part: Plate,  route: [Milling]}
+  P4: {part: Frame,  route: [Milling, Drilling]}
+
+# process_times omitted -> default_process_times (PLACEHOLDER).
+orders:
+  - {id: 1,  job: P1, due: 146, release: 11}    # release PLACEHOLDER
+  - {id: 2,  job: P2, due: 166, release: 31}    # release PLACEHOLDER
+  - {id: 3,  job: P3, due: 196, release: 61}    # release PLACEHOLDER
+  - {id: 4,  job: P4, due: 236, release: 101}   # release PLACEHOLDER
+  - {id: 5,  job: P1, due: 266, release: 131}   # release PLACEHOLDER
+  - {id: 6,  job: P3, due: 266, release: 131}   # release PLACEHOLDER
+  - {id: 7,  job: P2, due: 296, release: 161}   # release PLACEHOLDER
+  - {id: 8,  job: P4, due: 326, release: 191}   # release PLACEHOLDER
+  - {id: 9,  job: P3, due: 346, release: 211}   # release PLACEHOLDER
+  - {id: 10, job: P2, due: 376, release: 241}   # release PLACEHOLDER
