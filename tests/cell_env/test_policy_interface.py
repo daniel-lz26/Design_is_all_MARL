@@ -50,7 +50,8 @@ def test_decentralized_policies_never_get_global_state(decentralized: bool) -> N
 
 def test_registry_holds_every_baseline() -> None:
     rules = [n for n in REGISTRY if family(n) == "A"]
-    assert len(rules) == 21 and {"AUCTION", "AUCTION/EDD", "AUCTION/SPT"} <= set(REGISTRY)
+    auctions = {"AUCTION", "AUCTION/EDD", "AUCTION/SPT"}
+    assert len(rules) == 21 and auctions | {f"AUCTION_v0{a[7:]}" for a in auctions} <= set(REGISTRY)
     assert all(make(n).decentralized for n in REGISTRY if family(n) in "AB")
     with pytest.raises(KeyError, match="unknown policy"):
         make("NOT_A_POLICY")
@@ -161,3 +162,49 @@ def test_evaluate_and_compare_scripts(tmp_path: Path, monkeypatch: pytest.Monkey
         evaluate(lambda: make("AUCTION"), "configs/cell/cell_10.yaml", [0])[0]["policy"]
         == "AUCTION"
     )
+
+
+class SimAuction:
+    """Reference contract-net auction computed from the simulator (centralized, test only)."""
+
+    decentralized = False
+
+    def __init__(self, busy_bid: bool) -> None:
+        self.busy_bid, self.name, self.machine_rule = busy_bid, "SIM_AUCTION", "FIFO"
+
+    def reset(self, info: dict) -> None:
+        self.acts = info["actions"]
+
+    def act(self, obs: dict, masks: dict, global_state: dict | None = None) -> dict[str, int]:
+        from som.cell_env.estimates import bid
+
+        sim = global_state["sim"]  # type: ignore[index]
+        out = {}
+        for rid in masks:
+            r = sim.robots[rid]
+            others = [
+                o
+                for o in sim.robots.values()
+                if o.id != rid and o.state not in (RS.DOWN, RS.ABSENT)
+                and (self.busy_bid or (o.task is None and o.box is None))
+            ]  # fmt: skip
+            won = []
+            for k, b in enumerate(sim.tasks(rid)):
+                mine = bid(sim, r, b)
+                if mine <= min((bid(sim, o, b) for o in others), default=float("inf")):
+                    won.append((mine, k))
+            out[rid] = min(won)[1] if won else int(self.acts["wait"])
+        return out
+
+
+@pytest.mark.parametrize("busy_bid", [False, True])
+@pytest.mark.parametrize("scenario", ["cell_10", "cell_random_10_disrupt"])
+def test_auction_matches_a_simulator_reference(scenario: str, busy_bid: bool) -> None:
+    """The observation-based auction makes exactly the reference's decisions. The time scale
+    used by the features is fine enough that no two bids collapse onto the same value."""
+    env = CellEnv(f"configs/cell/{scenario}.yaml")
+    name = "AUCTION_v0" if busy_bid else "AUCTION"
+    run_episode(env, make(name), 20003)
+    ours = list(env.sim.log.decisions)
+    run_episode(env, SimAuction(busy_bid), 20003)
+    assert ours == list(env.sim.log.decisions)

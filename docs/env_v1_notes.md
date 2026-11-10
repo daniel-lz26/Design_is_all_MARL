@@ -60,21 +60,21 @@ placeholder cell. They are not predictions for the real cell.
 - A masked action raises an error.
 - `terminations` (all orders delivered) and `truncations` (`t_max` reached) are kept separate.
 
-### Observation v1 (`CELL_OBS_VERSION = 1`)
+### Observation v2 (`CELL_OBS_VERSION = 2`, env-v1.2; v1 had no `best_free_bid`)
 
 The size is fixed and doesn't depend on the robot count (tested for 2, 3 and 4 robots):
 
 | Mode | Observation size |
 |---|---|
-| `board` (default) and `local` | 284 |
-| `global` (an upper-reference ablation) | 644 |
+| `board` (default) and `local` | 292 (v1: 284) |
+| `global` (an upper-reference ablation) | 652 (v1: 644) |
 
-The critic state is 1496 dims in `board`/`local` mode and 2936 in `global` mode.
+The critic state is 1528 dims in `board`/`local` mode and 2968 in `global` mode (v1: 1496 and 2936).
 
 | Block | Contents |
 |---|---|
 | self | x, y, state one-hot, battery, agent-id one-hot (`max_robots` = 4), time, docked |
-| tasks (K rows) | valid, travel_to_pickup, travel_pickup_to_dest, slack, remaining_ops, remaining_proc, dest_in_occupancy, dest_busy, dest_time_to_free, dest_arm_queue, waiting_time, due_in, dest_is_bottleneck, best_other_bid, pickup_here |
+| tasks (K rows) | valid, travel_to_pickup, travel_pickup_to_dest, slack, remaining_ops, remaining_proc, dest_in_occupancy, dest_busy, dest_time_to_free, dest_arm_queue, waiting_time, due_in, dest_is_bottleneck, best_other_bid, pickup_here, best_free_bid (v2) |
 | stations (one row each) | in_occupancy, out_occupancy, machine_busy, machine_blocked, machine_down, time_to_free, arm_busy, arm_down, robots_at_dock, inbound, queue_work |
 | others (`max_robots` - 1 rows) | present, dx, dy, state one-hot, destination one-hot, eta_free, up |
 | global | orders done, on time so far, past due, time to next release |
@@ -263,7 +263,33 @@ paired p-values.
 - **Calibration** was tuned on `cell_10` and the `cell_random_10` validation seeds only. The
   larger and streaming scenarios reuse the same k range.
 
-## 8. Provenance
+## 8. Later versions (additive; the simulator itself is unchanged)
+
+**env-v1.1** adds four coordinator-outage scenarios for spec §12's "family C with and without
+the outage":
+- `cell_10_outage` and `cell_random_10_outage`: the nominal scenario plus one outage per
+  episode (p = 1).
+- `cell_10_disrupt_no_outage` and `cell_random_10_disrupt_no_outage`: `_disrupt` with the
+  outage switched off. Every other disruption is identical seed by seed (tested).
+
+Decentralized controllers never see the coordinator, so for them each pair is the same episode.
+`results/summary.md` has a "Coordinator outage" table with paired differences.
+
+**env-v1.2** (observation v2) adds one task feature, `best_free_bid`: the lowest bid among the
+other *free* robots, i.e. their travel time to the pickup. It exists to fix the auction:
+- `AUCTION` (and `/EDD`, `/SPT`) now lets only free robots bid.
+- The env-v1 auction, where busy robots bid their time-to-free plus travel, stays registered as
+  `AUCTION_v0`. Under it, a free robot often idled waiting for a busy robot that had out-bid
+  it: robots were idle 36–40% of the time against about 30% for the rules.
+
+Both auctions are tested to make exactly the decisions of a simulator-side reference.
+- **Rules:** decide exactly as before (tested), so their results carry over. They were re-run on
+  env-v1.2 anyway.
+- **Central scheduler:** reads the simulator, not the observation, so its env-v1/v1.1 results
+  stand.
+- **Learned methods:** must train on observation v2. A v1 checkpoint is refused.
+
+## 9. Provenance
 
 - **Rule and auction results** record `env_version` `e621af1`.
 - **Central results** record `9c41da7-dirty`. "Dirty" only means the old central CSVs had been

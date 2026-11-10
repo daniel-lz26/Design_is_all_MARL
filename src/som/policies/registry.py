@@ -50,12 +50,15 @@ def _baselines() -> None:
         for m in MACHINE_RULES:
             register(f"{r}/{m}", rule(r, m))
 
-    def auction(m: str) -> Factory:
-        return lambda ckpt: AuctionPolicy(m)
+    def auction(m: str, busy_bid: bool = False) -> Factory:
+        return lambda ckpt: AuctionPolicy(m, busy_bid)
 
     register("AUCTION", auction("FIFO"))
     register("AUCTION/EDD", auction("EDD"))
     register("AUCTION/SPT", auction("SPT"))
+    register("AUCTION_v0", auction("FIFO", busy_bid=True))  # env-v1 auction: busy robots bid
+    register("AUCTION_v0/EDD", auction("EDD", busy_bid=True))
+    register("AUCTION_v0/SPT", auction("SPT", busy_bid=True))
 
 
 def _central() -> None:
