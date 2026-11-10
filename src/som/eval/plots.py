@@ -52,3 +52,31 @@ def gantt(log: EpisodeLog, path: Path, title: str | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=120)
     plt.close(fig)
+
+
+def learning_curves(
+    curves: dict[str, list[tuple[float, float]]],
+    path: Path,
+    title: str,
+    baseline: tuple[str, float] | None = None,
+) -> None:
+    """On-time % against training env steps, one line per training seed.
+
+    ``curves`` maps a label to (env_steps, on_time_pct) points; ``baseline`` draws a horizontal
+    reference line such as the best heuristic on the same scenario and seeds.
+    """
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for label, pts in curves.items():
+        xs, ys = zip(*pts, strict=True) if pts else ((), ())
+        ax.plot(xs, ys, marker="o", ms=2.5, lw=1.2, label=label)
+    if baseline is not None:
+        ax.axhline(baseline[1], color="k", ls="--", lw=1, label=baseline[0])
+    ax.set_xlabel("training steps (decision points)")
+    ax.set_ylabel("on-time %")
+    ax.set_title(title)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=120)
+    plt.close(fig)
