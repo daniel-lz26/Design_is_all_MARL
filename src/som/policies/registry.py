@@ -76,3 +76,5 @@ _central()
 
 # --- learned methods: one line per method branch, alphabetical ---------------------------
 _LEARNED: dict[str, Any] = {}
+
+__import__("som.methods.ppo", fromlist=["x"]).register_all()  # method/ppo: IPPO, MAPPO
