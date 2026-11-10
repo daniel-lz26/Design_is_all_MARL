@@ -87,9 +87,12 @@ robot:
   v_cruise: 0.18          # PLACEHOLDER m/s (Burger max ~0.22)
   turn_penalty_s: 1.5     # PLACEHOLDER per heading change > 45 deg
   turn_threshold_deg: 45
-  dock_time_s: 3.0        # PLACEHOLDER
-  undock_time_s: 1.5      # PLACEHOLDER
 
-arm_load_s: 6.0           # PLACEHOLDER: measure from the Isaac Sim Franka pick/place cycle
-arm_unload_s: 6.0         # PLACEHOLDER
-conveyor_transfer_s: 2.0  # PLACEHOLDER
+# All handoff timings in one block. PLACEHOLDER: guesses until measured in Isaac Sim
+# (Franka pick/place cycle, TurtleBot docking). Scenarios may override the whole block.
+handling:
+  arm_load_s: 6.0
+  arm_unload_s: 6.0
+  dock_time_s: 3.0
+  undock_time_s: 1.5
+  conveyor_transfer_s: 2.0

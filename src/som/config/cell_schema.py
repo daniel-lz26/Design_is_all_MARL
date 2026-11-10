@@ -34,7 +34,7 @@ class CellStationCfg(StrictModel):
     approach: str  # aisle node where robots queue for the dock
     in_buffer_cap: int | None = Field(default=None, ge=1)  # None = unlimited (sink)
     out_buffer_cap: int | None = Field(default=None, ge=1)  # None = unlimited (source)
-    arm_load_s: float | None = Field(default=None, gt=0)  # None: layout default
+    arm_load_s: float | None = Field(default=None, gt=0)  # None: the handling block's value
     arm_unload_s: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
@@ -50,8 +50,17 @@ class CellRobotCfg(StrictModel):
     v_cruise: float = Field(default=0.18, gt=0)
     turn_penalty_s: float = Field(default=1.5, ge=0)  # per heading change above the threshold
     turn_threshold_deg: float = Field(default=45.0, ge=0, le=180)
-    dock_time_s: float = Field(default=3.0, ge=0)  # align under the arm
+
+
+class HandlingCfg(StrictModel):
+    """Every arm, dock and conveyor time in one place. All are guesses until measured in
+    Isaac Sim; scenarios can override the whole block for sensitivity runs."""
+
+    arm_load_s: float = Field(default=6.0, gt=0)  # arm puts a box on a robot
+    arm_unload_s: float = Field(default=6.0, gt=0)  # arm takes a box off a robot
+    dock_time_s: float = Field(default=3.0, ge=0)  # align under the arm (plus spur travel)
     undock_time_s: float = Field(default=1.5, ge=0)
+    conveyor_transfer_s: float = Field(default=2.0, ge=0)  # in-buffer -> machine
 
 
 class CellLayoutCfg(StrictModel):
@@ -62,9 +71,7 @@ class CellLayoutCfg(StrictModel):
     stations: dict[str, CellStationCfg]
     parking: list[str] = Field(min_length=1)
     robot: CellRobotCfg = Field(default_factory=CellRobotCfg)
-    arm_load_s: float = Field(default=6.0, gt=0)
-    arm_unload_s: float = Field(default=6.0, gt=0)
-    conveyor_transfer_s: float = Field(default=2.0, ge=0)
+    handling: HandlingCfg = Field(default_factory=HandlingCfg)
 
     @model_validator(mode="after")
     def _consistent(self) -> CellLayoutCfg:
@@ -95,9 +102,11 @@ class CellLayoutCfg(StrictModel):
 
 
 class CellGeneratorCfg(StrictModel):
-    """Random orders (spec §9): job type from the pool, times around the means, TWK due dates."""
+    """Random orders (spec §9): job type from the pool, times around the means. Due dates use
+    the calibrated rule: due = release + k * the order's minimum flow time in an empty cell."""
 
-    n_orders: int = Field(ge=1)
+    n_orders: int | None = Field(default=None, ge=1)
+    release_until_s: float | None = Field(default=None, gt=0)  # streams: stop releasing here
     job_types: dict[str, list[str]]  # name -> route of processes
     job_mix: dict[str, float]
     mean_process_s: dict[str, float]
@@ -105,10 +114,12 @@ class CellGeneratorCfg(StrictModel):
     arrivals: Literal["poisson", "even"] = "poisson"
     mean_interarrival_s: float = Field(default=25.6, gt=0)
     first_release_s: float = Field(default=10.0, ge=0)
-    due_k: Range = (1.5, 3.0)  # due = release + k * (process + travel + handoff estimate)
+    due_k: Range = (1.5, 3.0)  # uniform k; due = release + k * minimum flow time
 
     @model_validator(mode="after")
     def _known_jobs(self) -> CellGeneratorCfg:
+        if self.n_orders is None and self.release_until_s is None:
+            raise ValueError("give n_orders, release_until_s, or both")
         if set(self.job_mix) - set(self.job_types):
             raise ValueError("job_mix references unknown job types")
         for route in self.job_types.values():
@@ -140,8 +151,9 @@ class CellDisruptionCfg(StrictModel):
     aisle_block_p: float = Field(default=0.0, ge=0, le=1)
     aisle_block_s: Range = (30.0, 120.0)
     rush_order_p: float = Field(default=0.0, ge=0, le=1)
-    rush_slack_k: Range = (1.1, 1.4)  # rush due = release + k * work estimate
-    robot_join_at_s: Range | None = None  # _flex: the last robot joins at this time
+    rush_slack_k: Range = (1.1, 1.4)  # rush due = release + k * minimum flow time
+    robot_join_at_s: Range | None = None  # _flex: one absent robot joins at this time
+    robot_join_absent: tuple[int, int] = (1, 1)  # robots absent at the start (one joins)
     coordinator_outage_p: float = Field(default=0.0, ge=0, le=1)  # central baselines only
     coordinator_outage_s: Range = (30.0, 90.0)
     fault_window_s: Range = (30.0, 300.0)  # when one-off faults start
@@ -160,7 +172,9 @@ class CellScenarioCfg(StrictModel):
     max_robots: int = Field(default=4, ge=1)
     orders_from: str | None = None  # path to an abstract ScenarioCfg with fixed orders
     generator: CellGeneratorCfg | None = None
-    t_max: float | None = Field(default=None, gt=0)  # default: 2 x the last due time
+    due_k: float | None = Field(default=None, gt=0)  # fixed orders: due = release + k * min flow
+    t_max: float | None = Field(default=None, gt=0)  # default: 3 x the last due time
+    handling: HandlingCfg | None = None  # overrides the layout's handling block
     machine_seq_rule: Literal["FIFO", "EDD", "SPT"] = "FIFO"
     k_tasks: int = Field(default=8, ge=1)
     wait_cap_s: float = Field(default=10.0, gt=0)  # a WAIT is re-asked after this long
