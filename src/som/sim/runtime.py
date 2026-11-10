@@ -9,9 +9,17 @@ import numpy as np
 
 from som.core.commands import CancelRobot, Command, HoldDock, MoveRobot, StartProcess
 from som.core.decisions import Choice, DecisionRequest
-from som.core.events import DockReleased, Event, OrderReleased, ProcessDone, RobotArrived
+from som.core.events import (
+    DockReleased,
+    Event,
+    OrderReleased,
+    ProcessDone,
+    RobotArrived,
+    RobotFailed,
+)
 from som.core.factory import FactoryCore
 from som.core.history import EpisodeLog
+from som.sim.disruptions import Disruptions
 from som.sim.travel import TravelModel
 
 if TYPE_CHECKING:
@@ -25,8 +33,10 @@ class SimRuntime:
         travel: TravelModel,
         rng: np.random.Generator,
         horizon: float,
+        disruptions: Disruptions | None = None,
     ) -> None:
         self.core = core
+        self.disruptions = disruptions
         self.travel = travel
         self.rng = rng
         self.horizon = horizon
@@ -36,6 +46,9 @@ class SimRuntime:
         self._seq = 0
         for o in core.orders.values():
             self.schedule(o.spec.release_time, OrderReleased(o.id))
+        if disruptions is not None:
+            for t, ev in disruptions.scheduled(list(core.robots), list(core.machines), horizon):
+                self.schedule(t, ev)
 
     def schedule(self, t: float, event: Event) -> None:
         """Queue an event. Also used by tests and disruption scenarios to inject events."""
@@ -50,6 +63,13 @@ class SimRuntime:
                 start = self.core.robots[c.robot].pose
                 goal = self.core.layout.station(c.station).dock
                 dur = self.travel.sample(start, goal, self.rng)
+                if self.disruptions is not None:
+                    trip = self.disruptions.trip(dur)
+                    if trip.blocked:
+                        fail = RobotFailed(c.robot, "blocked", c.goal_id)
+                        self.schedule(self.now + trip.duration, fail)
+                        continue
+                    dur = trip.duration
                 self.schedule(self.now + dur, RobotArrived(c.robot, c.station, c.goal_id))
             elif isinstance(c, HoldDock):
                 self.schedule(self.now + c.duration, DockReleased(c.robot, c.station, c.goal_id))

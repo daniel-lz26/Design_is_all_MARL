@@ -1,4 +1,4 @@
-"""Build order specs from a ScenarioCfg, either fixed or generated with an rng."""
+"""Build order specs from a ScenarioCfg (fixed or generated) and seeded sim runtimes."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ from som.core.factory import CoreCfg, FactoryCore
 from som.core.ids import order_id, robot_id
 from som.core.layout import Layout
 from som.core.order import JobType, OrderSpec
+from som.sim.disruptions import Disruptions
+from som.sim.runtime import SimRuntime
+from som.sim.travel import StraightLineTravel
 
 
 def job_types(cfg: ScenarioCfg) -> dict[str, JobType]:
@@ -74,3 +77,32 @@ def build_core(
         machine_wait_allowed=env_cfg.machine_wait_allowed, debug_invariants=debug_invariants
     )
     return FactoryCore(layout, build_orders(scenario_cfg, rng), robots, cfg)
+
+
+def seed_streams(seed: int) -> list[np.random.SeedSequence]:
+    """Independent streams for (orders, travel noise, policy, disruptions). Adding a stream
+    never changes the earlier ones, so old seeds keep their orders and travel noise."""
+    return list(np.random.SeedSequence(seed).spawn(4))
+
+
+def make_runtime(
+    layout_cfg: LayoutCfg,
+    scenario_cfg: ScenarioCfg,
+    env_cfg: EnvCfg,
+    seed: int,
+    debug_invariants: bool = False,
+) -> SimRuntime:
+    """A ready-to-run episode: orders, noisy travel and disruptions all drawn from ``seed``."""
+    scen_ss, travel_ss, _, disrupt_ss = seed_streams(seed)
+    core = build_core(
+        layout_cfg, scenario_cfg, env_cfg, np.random.default_rng(scen_ss), debug_invariants
+    )
+    travel = StraightLineTravel.from_cfg(layout_cfg.travel_calibration, env_cfg.travel_noise_sigma)
+    disruptions = (
+        Disruptions(scenario_cfg.disruptions, np.random.default_rng(disrupt_ss))
+        if scenario_cfg.disruptions is not None
+        else None
+    )
+    return SimRuntime(
+        core, travel, np.random.default_rng(travel_ss), scenario_cfg.horizon, disruptions
+    )

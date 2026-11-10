@@ -48,3 +48,8 @@ def random_10() -> ScenarioCfg:
 @pytest.fixture
 def arena_cfg() -> LayoutCfg:
     return load_yaml(CONFIGS / "layouts" / "arena_13x6ft.yaml", LayoutCfg)
+
+
+@pytest.fixture
+def abstract_10_disrupt() -> ScenarioCfg:
+    return load_yaml(CONFIGS / "scenarios" / "abstract_10_disrupt.yaml", ScenarioCfg)

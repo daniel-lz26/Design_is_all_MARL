@@ -105,6 +105,26 @@ class GeneratorCfg(StrictModel):
     process_time_jitter: float = Field(default=0.0, ge=0, lt=1)  # +/- fraction, uniform
 
 
+class DisruptionCfg(StrictModel):
+    """Random disturbances injected by the simulator (scenario design, not measured rates).
+
+    Trip blocks stand in for obstacles: the robot stops and its goal times out, so the core sees
+    a RobotFailed. Trip delays are obstacles that clear. Machines break down and get repaired.
+    Robot outages take robots out of service for a while or for the rest of the episode.
+    """
+
+    trip_block_prob: float = Field(default=0.0, ge=0, le=1)  # per trip
+    trip_block_timeout_s: float = Field(default=20.0, gt=0)  # until the goal is aborted
+    trip_delay_prob: float = Field(default=0.0, ge=0, le=1)  # per trip
+    trip_delay_s: tuple[float, float] = (5.0, 20.0)  # uniform extra seconds
+    machine_mtbf_s: float | None = Field(default=None, gt=0)  # mean time between breakdowns
+    machine_repair_s: tuple[float, float] = (30.0, 90.0)
+    robot_outages: int = Field(default=0, ge=0)  # per episode, always leaving one robot up
+    robot_outage_start_s: tuple[float, float] = (60.0, 300.0)
+    robot_outage_s: tuple[float, float] = (60.0, 180.0)
+    robot_outage_permanent_prob: float = Field(default=0.0, ge=0, le=1)
+
+
 class ScenarioCfg(StrictModel):
     name: str
     kind: Literal["fixed", "generated"]
@@ -113,6 +133,7 @@ class ScenarioCfg(StrictModel):
     job_types: dict[str, JobTypeCfg]
     orders: list[OrderCfg] = Field(default_factory=list)
     generator: GeneratorCfg | None = None
+    disruptions: DisruptionCfg | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> ScenarioCfg:

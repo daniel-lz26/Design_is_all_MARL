@@ -14,9 +14,8 @@ from som.config.schema import EnvCfg, LayoutCfg, ScenarioCfg
 from som.core.history import EpisodeLog
 from som.eval.metrics import compute_metrics
 from som.policies.base import Policy
-from som.sim.runtime import SimRuntime, run_episode
-from som.sim.scenario import build_core
-from som.sim.travel import StraightLineTravel
+from som.sim.runtime import run_episode
+from som.sim.scenario import make_runtime, seed_streams
 
 
 def run_one(
@@ -27,15 +26,11 @@ def run_one(
     seed: int,
     debug_invariants: bool = False,
 ) -> EpisodeLog:
-    """One episode. ``seed`` drives the order generator, travel noise and the policy's rng
+    """One episode. ``seed`` drives the orders, travel noise, disruptions and the policy's rng
     through independent streams, so a fixed seed always reproduces the same log."""
-    scen_ss, travel_ss, policy_ss = np.random.SeedSequence(seed).spawn(3)
-    core = build_core(
-        layout_cfg, scenario_cfg, env_cfg, np.random.default_rng(scen_ss), debug_invariants
-    )
-    travel = StraightLineTravel.from_cfg(layout_cfg.travel_calibration, env_cfg.travel_noise_sigma)
-    policy.reset(np.random.default_rng(policy_ss))
-    rt = SimRuntime(core, travel, np.random.default_rng(travel_ss), scenario_cfg.horizon)
+    rt = make_runtime(layout_cfg, scenario_cfg, env_cfg, seed, debug_invariants)
+    core = rt.core
+    policy.reset(np.random.default_rng(seed_streams(seed)[2]))
     log = run_episode(rt, policy)
     log.meta.update(
         policy=policy.name,
