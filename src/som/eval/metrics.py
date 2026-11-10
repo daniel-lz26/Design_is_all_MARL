@@ -28,6 +28,8 @@ class EpisodeMetrics:
     machine_util: float
     n_decisions: int
     n_waits: int
+    n_failed_trips: int  # RobotFailed, e.g. a blocked path that timed out
+    n_outages: int  # robot or machine went down
     terminated: bool
 
     def as_row(self) -> dict[str, Any]:
@@ -52,8 +54,8 @@ def compute_metrics(log: EpisodeLog) -> EpisodeMetrics:
     makespan = max(delivered) if log.terminated and delivered else end
     span = max(makespan, 1e-9)
     n_r = max(len(log.robots), 1)
-    loaded = sum(_clip(g.depart, g.arrive, makespan) for g in log.legs if g.purpose == "dropoff")
-    empty = sum(_clip(g.depart, g.arrive, makespan) for g in log.legs if g.purpose == "pickup")
+    loaded = sum(_clip(g.depart, g.end(end), makespan) for g in log.legs if g.purpose == "dropoff")
+    empty = sum(_clip(g.depart, g.end(end), makespan) for g in log.legs if g.purpose == "pickup")
     dock = sum(_clip(d.request, d.end, makespan) for d in log.docks)
     busy = sum(_clip(p.start, p.end, makespan) for p in log.processes)
     return EpisodeMetrics(
@@ -71,5 +73,7 @@ def compute_metrics(log: EpisodeLog) -> EpisodeMetrics:
         machine_util=busy / (span * max(len(log.machines), 1)),
         n_decisions=sum(1 for d in log.decisions if d.order is not None),
         n_waits=sum(1 for d in log.decisions if d.order is None),
+        n_failed_trips=len(log.failures),
+        n_outages=sum(1 for o in log.outages if o[2] == "down"),
         terminated=log.terminated,
     )

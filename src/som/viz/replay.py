@@ -43,7 +43,7 @@ def robot_xy(
         if g.robot != robot or g.depart > t:
             continue
         dock = next(s.dock for s in layout.stations if s.id == g.to_station)
-        arrive = g.arrive if g.arrive is not None else log.end_time
+        arrive = g.end(log.end_time)
         if t >= arrive:
             if g.arrive is not None:
                 x, y = dock.x, dock.y
