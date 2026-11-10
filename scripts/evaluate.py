@@ -51,9 +51,10 @@ def seed_label(run: Path) -> str:
 
 
 def heldout_score(run: Path) -> tuple[float, float]:
-    best = json.loads((run / "best.json").read_text(encoding="utf-8"))
-    res = best[best_trained_on(run)]
-    return res["on_time_rate"], -res["mean_tardiness"]
+    """Best (on-time, -tardiness) on held-out training-distribution seeds, as the trainer ranks."""
+    with (run / "eval.csv").open(encoding="utf-8") as f:
+        rows = [r for r in csv.DictReader(f) if r["scenario"] == best_trained_on(run)]
+    return max((float(r["on_time_rate"]), -float(r["mean_tardiness"])) for r in rows)
 
 
 def best_trained_on(run: Path) -> str:
