@@ -150,6 +150,7 @@ class EnvCfg(StrictModel):
     k_robot: int = Field(default=6, ge=1)
     k_machine: int = Field(default=5, ge=1)
     machine_wait_allowed: bool = True
+    robot_wait_allowed: bool = False  # env-level: offer robots the WAIT slot
     travel_noise_sigma: float = Field(default=0.1, ge=0)  # lognormal sigma on travel times
 
     @model_validator(mode="after")
