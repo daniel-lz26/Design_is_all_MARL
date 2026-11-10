@@ -23,6 +23,10 @@ SCENARIOS = [
     "cell_random_20",
     "cell_random_30",
     "cell_stream",
+    "cell_10_outage",
+    "cell_random_10_outage",
+    "cell_10_disrupt_no_outage",
+    "cell_random_10_disrupt_no_outage",
 ]
 
 
@@ -206,3 +210,29 @@ def test_robot_joins_mid_shift() -> None:
     t_join, rid = joins[0][0], joins[0][1]
     assert all(t >= t_join for t, r, _ in sim.log.decisions if r == rid)
     assert any(r == rid for _, r, _ in sim.log.decisions)
+
+
+@pytest.mark.parametrize(
+    ("without", "with_"),
+    [("cell_random_10", "cell_random_10_outage"), ("cell_10_disrupt_no_outage", "cell_10_disrupt")],
+)
+def test_outage_scenarios_differ_only_by_the_coordinator_outage(without: str, with_: str) -> None:
+    """The outage pairs must be the same episodes apart from the outage itself, so a
+    decentralized controller (which never sees the coordinator) plays them identically."""
+    a, b = sim_for(without), sim_for(with_)
+    seen = 0
+    for seed in range(20000, 20010):
+        a.reset(seed)
+        b.reset(seed)
+        assert a.schedule.events == b.schedule.events
+        assert a.schedule.rush_orders == b.schedule.rush_orders
+        assert [o.spec for o in a.boxes.values()] == [o.spec for o in b.boxes.values()]
+        assert not a.schedule.coordinator_outages
+        seen += bool(b.schedule.coordinator_outages)
+    assert seen > 0  # the "with" side really has outages
+    for sim in (a, b):
+        run_rule_episode(sim, CellRulePolicy("NEAREST", "SPT"), 20001)
+    logs = [asdict(sim.log) for sim in (a, b)]
+    for log in logs:  # these two name the scenario and its outage window; all else must match
+        del log["scenario"], log["meta"]["coordinator_outages"]
+    assert logs[0] == logs[1]

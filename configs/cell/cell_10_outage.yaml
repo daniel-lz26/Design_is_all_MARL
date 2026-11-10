@@ -1,0 +1,13 @@
+# cell_10_outage: cell_10 plus one coordinator outage per episode (p = 1, so every seed tests it;
+# the _disrupt scenarios use the spec's p = 0.5). Only the central baselines (family C) are
+# affected; for decentralized controllers this is the same episode as cell_10. Spec section 12:
+# family C with and without the outage.
+name: cell_10_outage
+layout: configs/cell_layouts/sac_6x4.yaml
+n_robots: 4
+orders_from: configs/scenarios/abstract_10.yaml
+due_k: 1.50
+machine_seq_rule: FIFO
+disruptions:
+  coordinator_outage_p: 1.0      # one outage per episode, central baselines only
+  coordinator_outage_s: [30, 90]

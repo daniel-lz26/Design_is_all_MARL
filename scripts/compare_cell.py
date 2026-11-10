@@ -22,6 +22,13 @@ from som.eval.compare import mean_ci95
 
 ROOT = Path(__file__).resolve().parents[1]
 PAIRS = [("cell_10", "cell_10_disrupt"), ("cell_random_10", "cell_random_10_disrupt")]
+# coordinator outage (spec §12): without -> with, everything else identical seed by seed
+OUTAGE_PAIRS = [
+    ("cell_10", "cell_10_outage"),
+    ("cell_random_10", "cell_random_10_outage"),
+    ("cell_10_disrupt_no_outage", "cell_10_disrupt"),
+    ("cell_random_10_disrupt_no_outage", "cell_random_10_disrupt"),
+]
 BOOT = 10_000
 
 
@@ -152,6 +159,31 @@ def main() -> None:
                     np.mean(col(data[b][p], "on_time_pct")),
                 )
                 cells.append(f"{x:.1f} -> {y:.1f} ({y - x:+.1f})")
+            else:
+                cells.append("n/a")
+        if any(c != "n/a" for c in cells):
+            md.append(f"| {p} | " + " | ".join(cells) + " |")
+    md += [
+        "",
+        "## Coordinator outage (on-time % without -> with the outage)",
+        "",
+        "Same seeds and every other disruption identical; only the central scheduler (family C) "
+        "is affected, so decentralized controllers show no change. Difference paired by seed "
+        "(bootstrap p).",
+        "",
+        "| Controller | " + " | ".join(f"{a} -> {b}" for a, b in OUTAGE_PAIRS) + " |",
+        "|---|" + "---|" * len(OUTAGE_PAIRS),
+    ]
+    for p in names:
+        cells = []
+        for a, b in OUTAGE_PAIRS:
+            if p in data.get(a, {}) and p in data.get(b, {}):
+                x, y = data[a][p], data[b][p]
+                m, ci, pv = paired(y, x, "on_time_pct", rng)
+                cells.append(
+                    f"{np.mean(col(x, 'on_time_pct')):.1f} -> {np.mean(col(y, 'on_time_pct')):.1f}"
+                    f" ({m:+.1f} ± {ci:.1f}, p={pv:.3f})"
+                )
             else:
                 cells.append("n/a")
         if any(c != "n/a" for c in cells):

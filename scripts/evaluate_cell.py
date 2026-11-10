@@ -31,6 +31,10 @@ SCENARIOS = [
     "cell_random_20",
     "cell_random_30",
     "cell_stream",
+    "cell_10_outage",
+    "cell_random_10_outage",
+    "cell_10_disrupt_no_outage",
+    "cell_random_10_disrupt_no_outage",
 ]
 
 

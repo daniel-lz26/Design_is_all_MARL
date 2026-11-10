@@ -1,0 +1,29 @@
+# cell_random_10_outage: cell_random_10 plus one coordinator outage per episode (p = 1, so every seed tests it;
+# the _disrupt scenarios use the spec's p = 0.5). Only the central baselines (family C) are
+# affected; for decentralized controllers this is the same episode as cell_random_10. Spec section 12:
+# family C with and without the outage.
+name: cell_random_10_outage
+layout: configs/cell_layouts/sac_6x4.yaml
+n_robots: 4
+machine_seq_rule: FIFO
+generator:
+  n_orders: 10
+  job_types:
+    P1: [Turning, Grinding]
+    P2: [Turning, Milling, Drilling]
+    P3: [Milling]
+    P4: [Milling, Drilling]
+  job_mix: {P1: 2, P2: 3, P3: 3, P4: 2}
+  mean_process_s: {Turning: 30, Grinding: 20, Milling: 40, Drilling: 10}   # PLACEHOLDER means
+  process_jitter: 0.25
+  arrivals: poisson
+  mean_interarrival_s: 25.6
+  first_release_s: 10
+  due_k: [1.45, 1.95]           # calibrated on cell_random_10 validation seeds (k = 1.70 +/- 0.25)
+noise:
+  speed_sigma: 0.05
+  arm_tri: 0.10
+  process_sigma: 0.10
+disruptions:
+  coordinator_outage_p: 1.0      # one outage per episode, central baselines only
+  coordinator_outage_s: [30, 90]
