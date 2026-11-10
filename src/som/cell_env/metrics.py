@@ -86,3 +86,40 @@ def compute(log: CellLog) -> CellMetrics:
         decisions=len(log.decisions),
         terminated=log.terminated,
     )
+
+
+RECOVERY_WINDOW_S = 120.0
+RECOVERY_STEP_S = 5.0
+
+
+def recovery_time(log: CellLog, window: float = RECOVERY_WINDOW_S) -> float:
+    """Mean seconds, over disruption events, until rolling throughput is back within 10% of
+    its level just before the event (spec §12). Throughput is deliveries in the trailing
+    ``window``. An event the line never dips after counts 0; one it never recovers from counts
+    until the episode end. Events with no deliveries before them are skipped. NaN if none."""
+    done = sorted(o["delivered"] for o in log.orders if o["delivered"] is not None)
+
+    def rate(t: float) -> int:
+        return sum(t - window < d <= t for d in done)
+
+    out = []
+    for t_e, _, kind, _ in log.outages:
+        if kind != "down":
+            continue
+        pre = rate(t_e)
+        if pre == 0:
+            continue
+        t, dip = t_e, None
+        while t <= min(t_e + window, log.end_time):
+            if rate(t) < 0.9 * pre:
+                dip = t
+                break
+            t += RECOVERY_STEP_S
+        if dip is None:
+            out.append(0.0)
+            continue
+        t = dip
+        while t <= log.end_time and rate(t) < 0.9 * pre:
+            t += RECOVERY_STEP_S
+        out.append(min(t, log.end_time) - t_e)
+    return float(sum(out) / len(out)) if out else float("nan")
