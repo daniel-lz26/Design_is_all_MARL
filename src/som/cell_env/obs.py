@@ -28,7 +28,7 @@ from som.cell_env.estimates import bid, free_at, remaining_proc, slack
 if TYPE_CHECKING:
     from som.cell_env.des import CellSim
 
-CELL_OBS_VERSION = 1
+CELL_OBS_VERSION = 2  # v2 (env-v1.2): task feature best_free_bid
 TIME_SCALE = 200.0
 CLIP = 10.0  # +/- 2,000 s
 COUNT_SCALE = 4.0
@@ -52,6 +52,7 @@ TASK_FEATURES = (
     "dest_is_bottleneck",
     "best_other_bid",
     "pickup_here",
+    "best_free_bid",
 )
 STATION_FEATURES = (
     "in_occupancy",
@@ -237,6 +238,7 @@ class ObsEncoder:
         others = [
             o for o in sim.robots.values() if o.id != rid and o.state not in (RS.DOWN, RS.ABSENT)
         ]
+        free = [o for o in others if o.task is None and o.box is None]
         rows = out[lay.tasks_at : lay.stations_at].reshape(lay.k, len(TASK_FEATURES))
         for k, b in enumerate(tasks):
             pickup, dest = sim.stations[b.where], sim.next_station(b)
@@ -258,6 +260,7 @@ class ObsEncoder:
                 float(dest.process == BOTTLENECK_PROCESS),
                 ts(min((bid(sim, o, b) for o in others), default=math.inf)),
                 float(r.docked_at == b.where),
+                ts(min((bid(sim, o, b) for o in free), default=math.inf)),
             )
         out[lay.stations_at : lay.others_at] = (
             stations if stations is not None else self._station_rows()
