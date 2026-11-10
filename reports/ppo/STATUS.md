@@ -24,7 +24,7 @@ the robots learn which order to pick up next by trial and error in the simulated
      30% for the rules.
    - The fix needed one new piece of information in each robot's view, the best bid among
      *free* robots, so the observation went from version 1 to version 2.
-3. **`main` and the `env-v1.1` and `env-v1.2` tags** are pushed once the outage baselines finish.
+3. **`main` and the `env-v1.1` and `env-v1.2` tags are pushed** (done 2026-11-10).
 4. **Full runs: 10M decisions per run, 3 seeds each, for both PPO and GP.** The spec's limit was
    1.5M; the team raised it for both tracks so the comparison stays fair. PPO runs on Daniel's
    PC (IPPO and MAPPO, 6 runs) and GP on the Xeon.
@@ -44,10 +44,17 @@ the robots learn which order to pick up next by trial and error in the simulated
   - BC copies the best rule: 49.5% vs 49.7%.
   - A short PPO run improves on the BC start, significantly on both disruption scenarios.
 - Run time measured: **about 4–5 hours** for the six 10M runs on Daniel's PC.
+- **Coordinator outage result** (central scheduler, on `main`).
+  - One 30–90 s outage of its coordinator computer drops it from 80% to 24% of orders on time on
+    `cell_10`, and from 51% to 29% on `cell_random_10`.
+  - Rules, the auction and the learned robots don't depend on a coordinator, so they are
+    unaffected.
+  - Table: "Coordinator outage" in [results/summary.md](../../results/summary.md).
 
 ## Running now
-- Outage-scenario baselines (central scheduler) on `env-v1.1`; about 4 jobs left.
-- Next: the six 10M PPO runs start once that finishes, so the two jobs don't compete for CPU.
+- **The six full PPO runs** (IPPO and MAPPO × seeds 0, 1, 2; 10M decisions each) on Daniel's PC.
+  - Started 2026-11-10 at 12:10; expected to finish around 16:00–17:15.
+  - Progress: `runs/ppo/<RUN>/train.log` prints one validation line every 100k decisions.
 
 ## Latest results
 On-time % on 100 test scenarios, **observation v2, smoke run only** (250k decisions).
