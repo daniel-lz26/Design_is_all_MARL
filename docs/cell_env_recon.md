@@ -269,3 +269,72 @@ same seed, regardless of what the policy does.
 | `tests/test_cell_env.py` | `tests/cell_env/test_cell_env.py` (tests mirror `src/`) |
 | `docs/*.md` | `docs/*.md` |
 | `results/<policy>/` | `results/<policy>/` |
+
+---
+
+## 7. Milestone 2 results and questions for review
+
+`python -m som.cell_env.demo --config configs/cell/cell_10.yaml` (NEAREST/FIFO, 4 robots):
+10/10 delivered, **1/10 on time**, makespan 557 s, about 9,900 decision points/s on one core
+(spec target ≥ 2,000; observations and masks for RL will cost some of that headroom).
+
+**Stress check (not yet a pytest, that is M3):**
+- **Setup:**
+  - all 7 robot rules × 30 seeds × 2 and 4 robots
+  - every fault on: permanent robot down with rescue, arm, machine, aisle block, rush order
+  - MTBF robot failures without rescue
+  - robot join
+  - speed, arm and process noise
+- **Results:** 0 exceptions, 0 deadlocks, and every released box in exactly one place at the
+  end.
+- With `t_max` raised to 5,000 s, every disrupted 4-robot run delivers all orders.
+
+**Finding 1: the `abstract_10` due dates are infeasible in the cell.**
+- Every order in `abstract_10` allows due − release = 135 s (the placeholder release rule).
+- With the cell's overheads, one order with the whole cell to itself and an idle robot needs:
+
+  | Route | Time alone |
+  |---|---|
+  | M | 134 s |
+  | T→G, M→D | 175 s |
+  | T→M→D | 234 s |
+
+  The overheads per leg are dock 3 s, undock 1.5 s, arm 6 s + 6 s and conveyor 2 s, all spec
+  defaults, plus 0.18 m/s on a 6 × 4 m floor.
+- So **at most 3 of 10 orders (3, 6, 9) can ever be on time**, by under 1 s. `cell_10`
+  on-time % will sit near 0–20% for every controller, which makes the comparison with the
+  abstract env mostly noise.
+- **Options:**
+  - (a) keep `cell_10` as specified and compare tardiness rather than on-time %;
+  - (b) add a `due_scale`/`due_offset` to `cell_10` (e.g. due = release + 2 × the cell work
+    estimate) and keep an unscaled copy for reference;
+  - (c) find the real release and process times (`ippo_delivery_10orders.yaml`), which may
+    loosen things.
+- **I recommend (b).** It is your call, because it changes what "same orders as `abstract_10`"
+  means.
+
+**Finding 2: the default `t_max` (2 × last due = 752 s) truncates normal runs.**
+- 2 robots need about 905 s for `cell_10`.
+- Disrupted 4-robot runs need 720–860 s.
+- So 2-robot and disrupted episodes end with orders undelivered because of the clock, not the
+  policy.
+- **Recommendation:** default `t_max` = 3 × last due, or a fixed 1,500 s, so truncation means
+  "something went really wrong".
+
+**Finding 3: the bottleneck moves from milling to transport.**
+- In the abstract env milling was 71% busy and robots were 60% idle.
+- In the cell with 4 robots and NEAREST/FIFO, robot time splits into:
+
+  | Docking, waiting for the arm, and handoffs | Idle | Empty travel | Loaded travel |
+  |---|---|---|---|
+  | 44% | 29% | 14% | 13% |
+
+- Machines are about 27% busy and arms 11%. Who goes where, and when, matters much more
+  here, which is the case the spec expects learning to help with.
+
+**Choice made in M2: idle rule robots wait instead of parking.** A rule robot with nothing
+to do now waits near its station (`idle="wait"`). Driving back to parking and returning cost
+about 40 s per order. `idle="park"` remains available.
+
+**Not done in M2 (by design):** observations, rewards, the PettingZoo wrapper, Gantt and
+replay. Those are milestones 3–5.
