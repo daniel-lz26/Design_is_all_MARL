@@ -17,7 +17,10 @@ times out on a smaller problem the same schedule is the fallback (status ``FALLB
 
 Execution goes through the normal action interface: a robot's next planned leg is claimed when
 that box is on the board (only the board's top K tasks are claimable, as for every
-controller); otherwise the robot waits. Machines follow the planned processing order.
+controller); otherwise the robot waits. Machines follow the planned processing order. Because
+the model ignores buffer capacities, a plan can deadlock the cell; only then (no robot or
+machine busy and no robot's next leg pending or claimable) does a robot leave the plan and
+take the claimable leg with the earliest planned start.
 """
 
 from __future__ import annotations
