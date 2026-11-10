@@ -63,13 +63,18 @@ class SimRuntime:
         return self.core.done or self.truncated
 
     def advance_to_next_decision(self) -> list[DecisionRequest]:
-        """Pop events until some agent must decide. Returns [] when the episode is over."""
+        """Pop events until some agent must decide. Returns [] when the episode is over.
+
+        Every event at the current time is applied before agents are asked, so simultaneous
+        releases or arrivals all show up in the same decision.
+        """
         while True:
             if self.core.done:
                 return []
-            reqs = self.core.pending_decisions(self.now)
-            if reqs:
-                return reqs
+            if not self._heap or self._heap[0][0] > self.now:
+                reqs = self.core.pending_decisions(self.now)
+                if reqs:
+                    return reqs
             if not self._heap or self._heap[0][0] > self.horizon:
                 # Nothing more can happen before the horizon: the episode is truncated.
                 self.now = self.horizon

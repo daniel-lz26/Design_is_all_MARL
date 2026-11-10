@@ -146,3 +146,11 @@ def test_random_policy_preserves_invariants(
     delivered = [o.id for o in log.orders if o.delivered is not None]
     assert len(delivered) == len(set(delivered))
     assert log.terminated or log.truncated
+
+
+def test_simultaneous_events_reach_the_same_decision(tiny_layout: Layout) -> None:
+    """Two orders released at t=0 are both offered in the robot's first decision."""
+    core = make_core(tiny_layout, [spec(1, release=0.0), spec(2, release=0.0)], n_robots=1)
+    rt = SimRuntime(core, StraightLineTravel(0.5, 1.0), np.random.default_rng(0), 500.0)
+    (req,) = rt.advance_to_next_decision()
+    assert [c.order for c in req.candidates] == ["order_1", "order_2"]
