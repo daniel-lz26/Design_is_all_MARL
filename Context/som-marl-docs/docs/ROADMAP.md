@@ -38,19 +38,27 @@ through its schema in a test.
 
 ## M2 · RL env + MAPPO (Nov 1–8) · L
 
-- [ ] `SomParallelEnv` (decision-point semi-MDP, NOOP masking, `dt`, terminated vs truncated)
-- [ ] PettingZoo `parallel_api_test` passes
-- [ ] Obs encoders (versioned) + global state padded to `max_robots=4`
-- [ ] Rewards (team default, ≤4 terms)
-- [ ] `som.rl`: networks, buffer, **MAPPO trainer** (`critic_mode: central` default), `γ^dt` GAE, per-role
+- [x] `SomParallelEnv` (decision-point semi-MDP, NOOP masking, `dt`, terminated vs truncated)
+- [x] PettingZoo `parallel_api_test` passes
+- [x] Obs encoders (versioned) + global state padded to `max_robots=4`
+- [x] Rewards (team default, ≤4 terms)
+- [x] `som.rl`: networks, buffer, **MAPPO trainer** (`critic_mode: central` default), `γ^dt` GAE, per-role
       advantage normalization, vec env, value normalization, artifact export
-- [ ] Sanity tests: the trainer overfits a 3-order toy scenario; a masked action is never sampled
-- [ ] Train `mappo_2r` on `random_10` (3 seeds); evaluate on `abstract_10` + held-out `random_10`
-- [ ] Evaluate the `mappo_2r` artifact with 4 robots; start the `mappo_4r` fine-tune
+- [x] Sanity tests: the trainer overfits a 3-order toy scenario; a masked action is never sampled
+- [x] Train `mappo_2r` on `random_10` (3 seeds); evaluate on `abstract_10` + held-out `random_10`
+- [x] Evaluate the `mappo_2r` artifact with 4 robots *(done; `mappo_4r` fine-tune not started)*
 - [ ] *(Optional, only if a training slot is free)* one `ippo_2r` run for the legacy comparison row
 
 **Accept:** results table with MAPPO rows next to the baselines. Target: MAPPO on-time rate ≥ best
 heuristic on `abstract_10`. If it isn't met, record the gap and hypotheses, then continue to M3; don't block on it.
+
+> **M2 result (Nov 9, placeholder inputs, 1M steps, 3 seeds, 20 eval seeds, paired by seed):**
+> on `abstract_10` MAPPO is level with the best heuristic (30.7% vs 29.5% NEAREST/EDD, paired
+> difference +1.2 ± 2.8 points, so not significant). On held-out `random_10` (seeds 2000–2019) it is
+> ahead (33.7% vs 29.0% NEAREST/SPT, +4.7 ± 4.1). The 2-robot policy runs unchanged with 4 robots
+> (46.0% vs 43.5%, +2.5 ± 5.9). Tables: `reports/results_*.md`. Hypotheses for the small
+> `abstract_10` gap: milling caps on-time at roughly 3 of 10 whatever the order (see the Gantt
+> analysis), and the curve was still rising at 1M steps.
 
 > **Nov 8 checkpoint with the human:** review results; pick the policy that goes live; apply the
 > **disruption gate (D15)**: if MAPPO beats the best heuristic, schedule the disruption stretch in M3 week.

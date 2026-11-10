@@ -244,7 +244,8 @@ Agents that are busy (traveling, processing) are **not** in `pending_decisions`.
   **Calibrate `v_eff` and the overhead from real controller runs in M4** and record them in the layout YAML.
 - `SimRuntime` owns a heap of `(time, seq, Event)`. `advance_to_next_decision()` pops events, feeds
   `core.apply`, and schedules events for the returned commands, until `pending_decisions()` is non-empty
-  or the episode ends (all delivered, or `t ≥ horizon`).
+  or the episode ends (all delivered, or `t ≥ horizon`). All events at the current time are applied
+  before agents are asked, so simultaneous releases or arrivals land in the same decision.
 - **Time unit = seconds.** The legacy scenario used "steps" with values (due 146–376, process 10–47) that
   map naturally to seconds in a 4 m arena. `abstract_10` keeps them as seconds.
 
@@ -276,6 +277,9 @@ Agents that are busy (traveling, processing) are **not** in `pending_decisions`.
 `K_machine=5`. Candidates are placed in slots in a **canonical, non-heuristic order** (time they became
 available, then order id), so the policy has to learn prioritization rather than inherit EDD from slot
 order. If there are more than K candidates, keep the K oldest and log a truncation count.
+Whether slot 0 offers WAIT is an env setting per role (`robot_wait_allowed`, default off;
+`machine_wait_allowed`). A WAIT is re-asked at the next event, so a WAIT with no event left
+stalls the episode until the horizon; `mappo_2r` trains with both off.
 
 ### 5.3 Observations [contract: versioned]
 
@@ -291,9 +295,14 @@ order. If there are more than K candidates, keep the K oldest and log a truncati
 - other robots, aggregated per station: count of robots heading there (permutation- and N-invariant)
 
 **Machine obs:**
-- self: busy flag, remaining time fraction
+- self: machine one-hot (machines share one actor), busy flag, remaining time fraction, time fraction
 - per queue slot k: process time, slack, remaining ops after this one, time waiting
 - downstream pressure: input free capacity at each order's next station
+- the same factory summary as robots
+
+Implemented as schema v1 in `som.env.observations`; the normalization scales (200 s, 4 route
+steps, 5 orders) are part of the schema. Slack = due − now − estimated remaining work
+(`heuristics.remaining_work`, noise-free travel).
 
 ### 5.4 Global state (MAPPO critic)
 
@@ -325,8 +334,8 @@ or the curriculum first, and add a shaping term only as a configured, documented
   (§5.4) and exists only during training. Actors are always decentralized: each role's actor sees only its
   own obs, and only actors are exported. The trainer keeps a `critic_mode` flag: `central` (default, MAPPO)
   or `local` (IPPO, own obs). The `local` mode is for one optional ablation run; don't spend tuning time on it.
-- **Parameter sharing by role:** `actors = {"robot": RoleActor, "machine": RoleActor}`. A critic per role
-  (or shared with role one-hot; config).
+- **Parameter sharing by role:** `actors = {"robot": RoleActor, "machine": RoleActor}`. One critic per
+  role; its input is the agent-specific global state (`central`) or the agent's own obs (`local`).
 - **Batched updates:** the buffer stores flat arrays `[T, E, A, ...]`. Advantage normalization is
   **per role**. Minibatches are tensors (no per-sample Python loops). Masked logits use `-1e9` fill.
   Value targets are normalized with running statistics.
@@ -337,6 +346,10 @@ or the curriculum first, and add a shaping term only as a configured, documented
 - **Scale test:** train `mappo_2r`, evaluate the same artifact with 4 robots, then fine-tune `mappo_4r`.
 - Logging: TensorBoard scalars for on-time rate, mean tardiness, delivered count, entropy per role,
   value loss, KL, and clip fraction. Eval every N updates on 10 fixed seeds.
+- **Model selection:** `policy/` is the checkpoint with the best on-time rate (ties: lower tardiness)
+  on the *training* scenario at the eval seeds 1000–1009. Training episodes use seeds ≥ 1,000,000, so
+  these are held out. `abstract_10` is logged during training but never used to pick a checkpoint.
+  `policy_final/` is the last update.
 
 ### Policy artifact [contract]
 
@@ -347,6 +360,10 @@ runs/<id>/policy/
                        #  "net": {...}, "layout": "arena_13x6ft", "trained_on": "random_10",
                        #  "git_sha": "...", "created": "..."}
 ```
+
+`policy_meta.json` also carries `net.obs_dim` per role, the `env` config, the scenario `horizon`
+(the time-fraction feature uses it), `critic_mode`, `run`, `update` and `env_steps`. These are
+additive; loading fails on an obs schema or layout mismatch.
 
 `LearnedPolicy.from_artifact(dir)` uses greedy (argmax) actions by default, with a `stochastic=True` option.
 
