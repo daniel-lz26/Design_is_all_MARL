@@ -1,7 +1,11 @@
 # Method: PPO family (IPPO and MAPPO)
 
 Spec §11.3, track 1. Branch `PPO-training` (the spec suggests `method/ppo`), started from
-`env-v1` and merged with `env-v1.1`, which adds the coordinator-outage scenarios. Code is in
+`env-v1` and merged with `env-v1.1` and `env-v1.2`:
+- `env-v1.1` adds the coordinator-outage scenarios.
+- `env-v1.2` adds observation v2 with the task feature `best_free_bid`, and fixes the auction.
+
+**Everything from the full runs on is trained and evaluated on observation v2.** Code is in
 `src/som/methods/ppo/`, the training script is `scripts/train_ppo.py` and tests are in
 `tests/methods/ppo/`.
 
@@ -10,7 +14,7 @@ Spec §11.3, track 1. Branch `PPO-training` (the spec suggests `method/ppo`), st
 - **One code path, one switch.** `--critic local` gives IPPO: the critic sees the robot's own
   observation, so nothing is centralized even in training. `--critic central` gives MAPPO: the
   critic sees that observation plus the env's critic state (every robot's observation and the
-  order matrix, 1496 dims). **The actor is identical in both and sees only its own
+  order matrix, 1528 dims in obs v2). **The actor is identical in both and sees only its own
   observation**, so execution is decentralized either way. The evaluation harness passes
   `global_state=None`, which is the C1 guarantee.
 - **Shared parameters.** One actor serves every robot. The observation has a fixed size for 2,
@@ -61,96 +65,100 @@ Spec §11.3, track 1. Branch `PPO-training` (the spec suggests `method/ppo`), st
 - **Training mix:** `cell_random_10`, `cell_random_10_disrupt` and `cell_10_disrupt`, chosen
   uniformly per episode, on training seeds 0–9999. The policy is evaluated on every scenario,
   including ones it never trained on.
+- **`cell_10` is held out on purpose** (decision 2026-11-10).
+  - It is a single fixed schedule: the abstract's 10 orders, with no noise and no disruptions.
+    Every seed is the same episode.
+  - Training on it would teach the policy one timetable rather than a dispatching skill.
+  - It is also a fragile yardstick. Its due dates were calibrated so that the best of 21 rules
+    gets 50%, and only FIFO/EDD does. The other rules get 20–40%, and several orders miss by a
+    few seconds.
+  - It stays in the evaluation as a generalisation check, reported as held out.
 - **Selection.** Every 20,000 decisions the greedy actor runs on the 20 validation seeds
   (10000–10019) of every training scenario. The best mean on-time % (ties broken by lower
   tardiness) is saved as `best/actor.pt`, and that checkpoint is the one evaluated on the test
   seeds.
-- **Budget (spec §11.2).** 1.5M env decisions per run. Demonstrations count toward the budget;
-  validation runs do not.
+- **Budget.** The spec (§11.2) caps a run at 1.5M env decisions. The team raised it to
+  **10M per run for both PPO and GP** (decision 2026-11-10), so the comparison stays equal.
+  Demonstrations count toward the budget; validation runs do not.
+  - For 10M runs, validation runs every 100k decisions instead of 20k: 100 checkpoints, not 500.
+  - The learning-rate and entropy decay stretch over the whole budget.
 
 ## Smoke checks (this PC: Ryzen 5 3600, one torch thread per run)
 
-Full table: `results/ppo/smoke_test_seeds.md`. Learning curves:
-`results/ppo/smoke_learning_curves.png`. All numbers are on the 100 test seeds.
+Full tables, including the superseded observation-v1 checks: `results/ppo/smoke_test_seeds.md`.
+Learning curves: `results/ppo/smoke_learning_curves.png`. All numbers are on the 100 test seeds,
+observation v2 (`env-v1.2`).
 
-1. **Behaviour cloning reaches the teacher.**
-   - The clone matches 100% of the 50k demonstrated decisions.
-   - On `cell_random_10` it gets 49.5% on time against BOTTLENECK/SPT's 49.7%, and 93 of 100
-     episodes are identical.
-   - The remaining differences come from states the teacher never visited in the
-     demonstrations.
+1. **Behaviour cloning reaches the teacher.** The clone matches 100% of the 50k demonstrated
+   decisions. On `cell_random_10` it gets 49.5% on time against BOTTLENECK/SPT's 49.7%. (On
+   observation v1, 93 of 100 episodes were identical to the teacher's.)
 2. **A short PPO run improves on its start.** The run used 250k decisions: 50k of behaviour
-   cloning plus 200k of PPO. MAPPO took 6.4 minutes and IPPO 4.9.
+   cloning plus 200k of PPO. MAPPO took 6.8 minutes and IPPO 5.3.
 
-   | Scenario | Best rule | BC start | MAPPO smoke | IPPO smoke | MAPPO − BC | IPPO − BC |
-   |---|---|---|---|---|---|---|
-   | `cell_random_10` | 49.7 | 49.5 | 51.3 | 50.3 | +1.8 (p = 0.016) | +0.8 (p = 0.29) |
-   | `cell_random_10_disrupt` | 26.8 | 25.9 | 28.4 | 26.6 | +2.5 (p = 0.004) | +0.7 (p = 0.40) |
-   | `cell_10_disrupt` | 15.9 | 10.4 | 16.6 | 15.6 | +6.2 (p < 0.001) | +5.1 (p < 0.001) |
+   | Scenario | Best rule | Best auction | BC start | MAPPO smoke | IPPO smoke | MAPPO − BC | IPPO − BC |
+   |---|---|---|---|---|---|---|---|
+   | `cell_random_10` | 49.7 | 51.9 | 49.5 | 50.0 | 51.4 | +0.5 (p = 0.49) | +1.9 (p = 0.065) |
+   | `cell_random_10_disrupt` | 26.8 | 26.4 | 26.0 | 28.5 | 28.4 | +2.5 (p = 0.005) | +2.4 (p = 0.012) |
+   | `cell_10_disrupt` | 15.9 | 11.5 | 10.2 | 17.1 | 14.9 | +6.9 (p < 0.001) | +4.7 (p < 0.001) |
 
-   The smoke MAPPO was also run on the scenarios it did not train on. It was at or above the
-   best rule on every one except `cell_10`:
+   - **Both methods improve significantly** on the two disruption scenarios.
+   - On nominal `cell_random_10` the gain is not yet significant after 200k PPO decisions.
+   - The fixed auction (`env-v1.2`) is now the strongest baseline on `cell_random_10`, at
+     51.9%. The full runs have to beat it there, not just the best rule.
 
-   | Scenario | Smoke MAPPO | Best rule |
-   |---|---|---|
-   | `cell_random_20` | 48.5 | 47.8 |
-   | `cell_random_30` | 41.4 | 38.6 |
-   | `cell_stream` | 45.1 | 43.2 |
-   | `cell_random_10_flex` | 41.9 | 40.3 |
-   | `cell_random_10` with 3 robots | 35.9 | 34.7 |
-   | `cell_random_10` with 2 robots | 20.9 | 21.0 |
-   | `cell_10` | 30.0 | 50.0 (FIFO/EDD) |
+**Speed.** A single run alone does about 1,100 decisions/s. With six running at once, see the
+full-runs section below.
 
-   `cell_10` is one fixed schedule on which only FIFO/EDD reaches 50%; other rules get 20–40%.
+## Full runs on Daniel's PC (decision 2026-11-10)
 
-**Speed.** One run collects and trains at about 1,100 decisions/s when the machine is idle, and
-about 650/s when it shares the CPU. A full 1.5M-decision run takes about 25–45 minutes.
+IPPO and MAPPO, 3 seeds each, 10M decisions per run, all 6 at once (one core per run). The
+Xeon runs the GP track. Windows PowerShell, from the repo root on branch `PPO-training`:
 
-## Running on the Xeon (Ubuntu 22.04, W3-2423, 6 cores)
+```powershell
+# Start all 6 runs. They are hidden background processes, so closing the terminal does not
+# stop them. Logs go to runs\ppo\<RUN>.log; each run also writes runs\ppo\<RUN>\train.log.
+New-Item -ItemType Directory -Force runs\ppo | Out-Null
+foreach ($s in 0, 1, 2) {
+  foreach ($c in "central", "local") {
+    $m = if ($c -eq "central") { "MAPPO" } else { "IPPO" }
+    Start-Process -WindowStyle Hidden -FilePath .venv\Scripts\python.exe `
+      -ArgumentList "scripts/train_ppo.py --critic $c --seed $s --budget 10000000 --eval-every 100000" `
+      -RedirectStandardOutput "runs\ppo\${m}_s$s.log" -RedirectStandardError "runs\ppo\${m}_s$s.err"
+  }
+}
 
-```bash
-# 1. Set up once (about 10 min)
-sudo apt install python3.10-venv tmux
-git clone git@github.com:daniel-lz26/Design_is_all_MARL.git && cd Design_is_all_MARL
-git checkout PPO-training
-python3 -m venv .venv && source .venv/bin/activate
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements-dev.txt && pip install -e .
-python -m pytest -q                       # 195 tests, about 2-3 min
+# Watch progress: one validation line every 100k decisions per run
+Get-Content runs\ppo\MAPPO_s0.log -Tail 5 -Wait
 
-# 2. Reproduce the env-v1 baselines first (about 10-15 min): every rule and auction on every
-#    env-v1 scenario, and the central scheduler on cell_10. Then compare seed by seed with
-#    the committed results/.
-python scripts/evaluate_cell.py --workers 6 --out runs/repro \
-  --scenarios cell_10 cell_10_raw cell_10_disrupt cell_random_10 cell_random_10_disrupt \
-              cell_random_10_flex cell_random_20 cell_random_30 cell_stream \
-  --policy $(python -c "from som.policies.registry import REGISTRY, family; print(' '.join(n for n in REGISTRY if family(n) in 'AB'))")
-python scripts/evaluate_cell.py --policy CENTRAL_STATIC CENTRAL_REPLAN --scenarios cell_10 \
-  --out runs/repro --workers 2
-python -m som.methods.ppo.check_repro runs/repro    # must end "0 differ, 0 missing"
+# Stop everything if needed (only the training processes)
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -like "*train_ppo.py*" } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId }
 
-# 3. Train IPPO and MAPPO, 3 seeds each, all 6 at once (about 45-60 min; one core per run)
-tmux new -s ppo                           # detach with Ctrl-b d, come back with: tmux attach -t ppo
-mkdir -p runs/ppo
-for s in 0 1 2; do
-  nohup python scripts/train_ppo.py --critic central --seed $s > runs/ppo/MAPPO_s$s.log 2>&1 &
-  nohup python scripts/train_ppo.py --critic local   --seed $s > runs/ppo/IPPO_s$s.log 2>&1 &
-done
-tail -f runs/ppo/*.log                    # one validation line every 20k decisions
-
-# 4. Pick the best seed per method on validation, then evaluate on every scenario's test seeds
-#    plus 2 and 3 robots (about 15-20 min). Writes results/IPPO, results/MAPPO,
-#    results/ppo/seeds/ and results/ppo/selection.json, and refreshes results/summary.md.
-python -m som.methods.ppo.finalize --workers 6
-
-# 5. Commit the results and push the branch
-git add results && git commit -m "docs(results): add IPPO and MAPPO results (3 seeds each)"
+# When all 6 have a summary.json: pick the best seed per method on validation, evaluate on
+# every scenario's test seeds plus 2 and 3 robots, and refresh results/summary.md
+.venv\Scripts\python.exe -m som.methods.ppo.finalize --workers 6
+git add results reports docs; git commit -m "docs(results): add IPPO and MAPPO results (10M decisions, 3 seeds each)"
 git push origin PPO-training
 ```
 
-Set git's name and email on the Xeon before the first commit (`git config user.name`,
-`git config user.email`). Model files stay in `runs/`, which git ignores. Copy
-`runs/ppo/*/best/` somewhere safe, or a teammate cannot re-evaluate them.
+**Measured speed** with all 6 running at once on the Ryzen 5 3600 (6 cores / 12 threads),
+while the PC was also running central-scheduler jobs:
+
+| Method | Speed per run | 10M decisions |
+|---|---|---|
+| MAPPO | 610–780 decisions/s | about 3.5–4.5 h |
+| IPPO | 1,000–1,300 decisions/s | about 2–3 h |
+
+- Validation every 100k decisions adds about 10–15 min per run.
+- **All six finish in about 4–5 h** (MAPPO is the slowest); finalize adds about 10 min.
+- The PC is fully busy throughout.
+
+**On another machine** (for example the Xeon): set up as in the README's Linux section and
+check the baselines reproduce first:
+- Run `scripts/evaluate_cell.py` on the rules and auctions with `--out runs/repro`.
+- Then run `python -m som.methods.ppo.check_repro runs/repro`, which must end "0 differ, 0 missing".
+- Launch with the same `train_ppo.py` arguments, using `nohup ... &` in place of `Start-Process`.
 
 ## Results
 
