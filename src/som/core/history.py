@@ -40,6 +40,13 @@ class LegRecord:
     from_xy: tuple[float, float]
     to_station: str
     arrive: float | None = None  # None if the leg failed or the episode ended first
+    aborted: float | None = None  # when a failed leg was given up
+
+    def end(self, episode_end: float) -> float:
+        """When the robot stopped driving this leg."""
+        if self.arrive is not None:
+            return self.arrive
+        return self.aborted if self.aborted is not None else episode_end
 
 
 @dataclass(slots=True)
@@ -70,6 +77,8 @@ class EpisodeLog:
     docks: list[DockRecord] = field(default_factory=list)
     decisions: list[DecisionRecord] = field(default_factory=list)
     failures: list[tuple[float, str, str]] = field(default_factory=list)  # (t, robot, reason)
+    # (t, robot or machine, "down" | "up", reason)
+    outages: list[tuple[float, str, str, str]] = field(default_factory=list)
     end_time: float = 0.0
     terminated: bool = False  # all orders delivered
     truncated: bool = False  # horizon reached first
@@ -93,6 +102,7 @@ class EpisodeLog:
             docks=[DockRecord(**k) for k in d["docks"]],
             decisions=[DecisionRecord(**x) for x in d["decisions"]],
             failures=tup(d["failures"]),
+            outages=tup(d.get("outages", [])),
             end_time=d["end_time"],
             terminated=d["terminated"],
             truncated=d["truncated"],

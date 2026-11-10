@@ -11,7 +11,9 @@ from som.core.events import (
     OrderReleased,
     ProcessDone,
     RobotArrived,
+    RobotDown,
     RobotFailed,
+    RobotUp,
 )
 from som.core.factory import FactoryCore, RobotStatus
 from som.core.ids import MachineId, OrderId, RobotId, StationId
@@ -258,3 +260,35 @@ def test_multi_step_route_goes_machine_to_machine(tiny_layout: Layout) -> None:
     core.apply(ProcessDone(TURNING, O1, start.token), 16.0)
     cand = robot_req(core, R0, 16.0).candidates[0]
     assert (cand.pickup, cand.dest) == (A, B)
+
+
+def test_robot_down_while_carrying_frees_order_and_others_take_it(tiny_layout: Layout) -> None:
+    core = make_core(tiny_layout, [spec(1)])
+    release_all(core)
+    core.assign(R0, robot_req(core, R0, 0.0).candidates[0], 0.0)
+    goal = core.robots[R0].goal_id
+    dock_cycle(core, R0, SRC, 1.0)
+    core.apply(RobotDown(R0, "battery"), 5.0)
+    r0 = core.robots[R0]
+    assert (r0.status, r0.task, r0.carrying, r0.goal_id) == (RobotStatus.OFFLINE, None, None, None)
+    assert core.orders[O1].status is OrderStatus.RELEASED
+    assert [r.agent for r in core.pending_decisions(5.0)] == [R1]  # offline robots never decide
+    assert goal is not None and core.apply(RobotArrived(R0, A, goal), 6.0) == []  # stale
+    assert core.history().outages == [(5.0, R0, "down", "battery")]
+    assert check_invariants(core) == []
+
+
+def test_robot_down_releases_dock_and_up_returns_it_to_service(tiny_layout: Layout) -> None:
+    core = make_core(tiny_layout, [spec(1), spec(2)])
+    release_all(core)
+    core.assign(R0, robot_req(core, R0, 0.0).candidates[0], 0.0)
+    core.assign(R1, robot_req(core, R1, 0.0).candidates[0], 0.0)
+    core.apply(RobotArrived(R0, SRC, core.robots[R0].goal_id or ""), 1.0)
+    core.apply(RobotArrived(R1, SRC, core.robots[R1].goal_id or ""), 1.0)
+    cmds = core.apply(RobotDown(R0), 2.0)
+    assert any(isinstance(c, HoldDock) and c.robot == R1 for c in cmds)
+    assert core.apply(RobotDown(R0), 3.0) == []  # already offline
+    core.apply(RobotUp(R0), 10.0)
+    assert core.robots[R0].status is RobotStatus.IDLE
+    assert R0 in [r.agent for r in core.pending_decisions(10.0)]
+    assert [o[2] for o in core.history().outages] == ["down", "up"]

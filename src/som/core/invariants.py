@@ -66,7 +66,8 @@ def check_invariants(core: FactoryCore) -> list[str]:
     inbound: Counter[str] = Counter()
     for r in core.robots.values():
         if r.task is None:
-            if r.status is not RobotStatus.IDLE or r.carrying is not None:
+            idle = r.status in (RobotStatus.IDLE, RobotStatus.OFFLINE)
+            if not idle or r.carrying is not None:
                 problems.append(f"{r.id} has no task but is {r.status.value}")
             continue
         o = core.orders[r.task.order]
@@ -80,6 +81,9 @@ def check_invariants(core: FactoryCore) -> list[str]:
             problems.append(f"{rid} holds {n} reservations")
         if core.robots[rid].task is None:
             problems.append(f"{rid} holds a reservation without a task")
+    for r in core.robots.values():
+        if r.status is RobotStatus.OFFLINE and (r.task is not None or r.goal_id is not None):
+            problems.append(f"{r.id} is OFFLINE but still has a task or goal")
     for m in core.machines.values():
         if inbound[m.station] != m.inbound:
             problems.append(f"{m.id} inbound {m.inbound} != {inbound[m.station]} reserved trips")

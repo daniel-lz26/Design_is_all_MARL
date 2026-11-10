@@ -1,4 +1,4 @@
-"""External events fed to FactoryCore.apply (arrivals, failures, process done, machine down/up).
+"""External events fed to FactoryCore.apply (arrivals, failures, process done, down/up).
 
 Robot events carry the ``goal_id`` of the command that caused them and machine events carry the
 run ``token``, so the core can ignore stale events (e.g. an arrival after RobotFailed, or a
@@ -41,6 +41,19 @@ class RobotFailed:
 
 
 @dataclass(frozen=True, slots=True)
+class RobotDown:
+    """The robot leaves service (battery, e-stop, fault) until a RobotUp, possibly never."""
+
+    robot: RobotId
+    reason: str = "offline"
+
+
+@dataclass(frozen=True, slots=True)
+class RobotUp:
+    robot: RobotId
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessDone:
     machine: MachineId
     order: OrderId
@@ -67,6 +80,8 @@ Event = (
     | RobotArrived
     | DockReleased
     | RobotFailed
+    | RobotDown
+    | RobotUp
     | ProcessDone
     | MachineDown
     | MachineUp

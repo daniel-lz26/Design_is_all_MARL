@@ -20,7 +20,9 @@ from som.core.events import (
     OrderReleased,
     ProcessDone,
     RobotArrived,
+    RobotDown,
     RobotFailed,
+    RobotUp,
     Tick,
 )
 from som.core.history import (
@@ -52,6 +54,7 @@ class RobotStatus(str, Enum):
     TO_DROPOFF = "TO_DROPOFF"
     WAITING_DOCK = "WAITING_DOCK"  # at the station, dock held by another robot
     DOCKING = "DOCKING"  # holding the dock, transfer in progress
+    OFFLINE = "OFFLINE"  # out of service after RobotDown; never asked to decide
 
 
 @dataclass(slots=True)
@@ -273,6 +276,10 @@ class FactoryCore:
             cmds = self._on_process_done(event)
         elif isinstance(event, RobotFailed):
             cmds = self._on_failed(event)
+        elif isinstance(event, RobotDown):
+            cmds = self._on_robot_down(event)
+        elif isinstance(event, RobotUp):
+            cmds = self._on_robot_up(event)
         elif isinstance(event, MachineDown):
             cmds = self._on_machine_down(event)
         elif isinstance(event, MachineUp):
@@ -388,6 +395,11 @@ class FactoryCore:
         if r is None or r.task is None:
             return []
         self._log.failures.append((self.now, r.id, e.reason))
+        return self._abort_task(r)
+
+    def _abort_task(self, r: RobotState) -> list[Command]:
+        """Drop the robot's task: its order returns to the pickup station, docks are freed."""
+        assert r.task is not None
         task, o = r.task, self.orders[r.task.order]
         back = (
             OrderStatus.RELEASED
@@ -404,7 +416,8 @@ class FactoryCore:
         if m is not None:
             m.inbound -= 1
         if r.leg is not None:
-            r.leg = None  # arrive stays None: the leg never completed
+            r.leg.aborted = self.now  # arrive stays None: the leg never completed
+            r.leg = None
         cmds: list[Command] = []
         for sid, dock in self.docks.items():
             if r.id in dock.waiting:
@@ -419,11 +432,33 @@ class FactoryCore:
         r.status = RobotStatus.IDLE
         return cmds
 
+    def _on_robot_down(self, e: RobotDown) -> list[Command]:
+        """A robot leaving service mid-task gives its order back like a failed trip; the
+        assumption is that someone returns a carried part to the station it came from."""
+        r = self.robots[e.robot]
+        if r.status is RobotStatus.OFFLINE:
+            return []
+        self._log.outages.append((self.now, r.id, "down", e.reason))
+        cmds = self._abort_task(r) if r.task is not None else []
+        r.goal_id = None  # in-flight arrivals for this robot are now stale
+        r.leg = None
+        r.status = RobotStatus.OFFLINE
+        return cmds
+
+    def _on_robot_up(self, e: RobotUp) -> list[Command]:
+        r = self.robots[e.robot]
+        if r.status is not RobotStatus.OFFLINE:
+            return []
+        self._log.outages.append((self.now, r.id, "up", ""))
+        r.status = RobotStatus.IDLE
+        return []
+
     def _on_machine_down(self, e: MachineDown) -> list[Command]:
         m = self.machines[e.machine]
         if m.down:
             return []
         m.down = True
+        self._log.outages.append((self.now, m.id, "down", "breakdown"))
         if m.current is not None and m.busy_until is not None:
             m.paused_remaining = m.busy_until - self.now
             m.busy_until = None
@@ -438,6 +473,7 @@ class FactoryCore:
         if not m.down:
             return []
         m.down = False
+        self._log.outages.append((self.now, m.id, "up", ""))
         if m.current is not None and m.paused_remaining is not None:
             return [self._start_run(m, m.current, m.paused_remaining)]
         return []
