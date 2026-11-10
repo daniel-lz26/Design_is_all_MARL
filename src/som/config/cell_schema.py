@@ -192,3 +192,15 @@ class CellScenarioCfg(StrictModel):
         if self.battery:
             raise ValueError("battery is not implemented yet (spec: optional, phase 2)")
         return self
+
+
+class CellRewardCfg(StrictModel):
+    """Team reward terms (spec §8). Set a weight to 0 to switch the term off."""
+
+    on_time: float = 10.0  # per order delivered on time
+    late_per_30s: float = 1.0  # per late order: -late_per_30s x min(tardiness / 30, late_cap)
+    late_cap: float = 5.0
+    past_due_per_s: float = 0.01  # per second, per undelivered order past its due time
+    feed_idle_machine: float = 0.2  # shaping: a box lands in an idle machine's in-buffer
+    blocked_trip: float = 0.05  # shaping, subtracted per blocked trip
+    empty_travel_per_s: float = 0.02  # shaping, subtracted per second of empty travel

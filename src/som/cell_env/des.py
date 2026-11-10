@@ -114,6 +114,9 @@ class CellSim:
         }
         self.delivered = 0
         self.truncated = False
+        self.fed_idle = 0  # boxes dropped into the in-buffer of an idle machine (reward shaping)
+        self.empty_travel_s = 0.0
+        self._since: dict[str, float] = {}
         self.log = CellLog(cfg.name, seed, list(self.robot_ids), list(self.stations))
         for r in self.robots.values():
             self.log.robot_states[r.id] = []
@@ -315,6 +318,9 @@ class CellSim:
 
     def _set(self, r: Robot, state: RS) -> None:
         if r.state is not state or not self.log.robot_states[r.id]:
+            if r.state is RS.TRAVEL_EMPTY:
+                self.empty_travel_s += self.now - self._since.get(r.id, self.now)
+            self._since[r.id] = self.now
             r.state = state
             self.log.robot_states[r.id].append((self.now, state.value))
 
@@ -527,6 +533,8 @@ class CellSim:
                 self.delivered += 1
             else:
                 box.loc, box.where = Loc.IN, st.key
+                if st.current is None and st.blocked_box is None and not st.down:
+                    self.fed_idle += 1
                 st.in_buf.append(box.id)
                 self._log_buffers(st)
                 self._machine_try(st)
