@@ -157,7 +157,7 @@ def main() -> None:
     first = seed_label(runs[0])
     gantt(
         load_log(run_dir / "logs" / safe_name(first) / "ep_000.json"),
-        args.reports / f"gantt_{args.scenario}_{safe_name(first).replace(' ', '_')}_ep0.png",
+        args.reports / f"gantt_{tag}_{safe_name(first).replace(' ', '_')}_ep0.png",
     )
     if args.robots == 2:
         curves = {seed_label(r): eval_curve(r, args.scenario) for r in runs}
