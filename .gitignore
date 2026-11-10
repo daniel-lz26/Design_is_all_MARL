@@ -227,3 +227,6 @@ runs/
 *.pt
 !reports/**/*.pt
 legacy/reference/
+
+# Per-seed Gantt charts from evaluate_cell.py: large and regenerable
+results/**/gantt_*.png
