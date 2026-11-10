@@ -31,7 +31,7 @@ from som.env.global_state import agent_onehot, base_state, state_dim
 from som.env.observations import ObsContext, encode, obs_dim
 from som.env.rewards import RewardFn, open_orders
 from som.sim.runtime import SimRuntime
-from som.sim.scenario import build_core
+from som.sim.scenario import make_runtime
 from som.sim.travel import StraightLineTravel
 
 
@@ -110,16 +110,7 @@ class SomParallelEnv(ParallelEnv):  # type: ignore[misc]
             ep_seed = seed
         else:
             ep_seed = int(self._seed_rng.integers(2**31 - 1))
-        scen_ss, travel_ss, _ = np.random.SeedSequence(ep_seed).spawn(3)
-        core = build_core(
-            self.layout_cfg, self.scenario_cfg, self.env_cfg, np.random.default_rng(scen_ss)
-        )
-        noisy = StraightLineTravel.from_cfg(
-            self.layout_cfg.travel_calibration, self.env_cfg.travel_noise_sigma
-        )
-        self.runtime = SimRuntime(
-            core, noisy, np.random.default_rng(travel_ss), self.scenario_cfg.horizon
-        )
+        self.runtime = make_runtime(self.layout_cfg, self.scenario_cfg, self.env_cfg, ep_seed)
         self.episode_seed = ep_seed
         self.agents = list(self.possible_agents)
         self.dropped_candidates = 0

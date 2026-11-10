@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from som.core.factory import RobotStatus
 from som.core.history import CoreSnapshot
 from som.core.order import OrderStatus
 from som.env.observations import OPS_SCALE, ObsContext, factory_summary, onehot, scaled_time
 
-ROBOT_STATUSES = ("IDLE", "TO_PICKUP", "TO_DROPOFF", "WAITING_DOCK", "DOCKING")
+ROBOT_STATUSES = tuple(s.value for s in RobotStatus)
 ORDER_STATUSES = tuple(s.value for s in OrderStatus)
 
 _ROBOT_FEATS = 1 + len(ROBOT_STATUSES) + 3
@@ -25,6 +26,7 @@ def base_state_dim(ctx: ObsContext, max_orders: int) -> int:
         1
         + ctx.n_stations
         + 4 * ctx.n_machines
+        + 1
         + ctx.max_robots * _ROBOT_FEATS
         + max_orders * _ORDER_FEATS
     )

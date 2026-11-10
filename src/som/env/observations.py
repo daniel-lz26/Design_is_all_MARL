@@ -18,7 +18,7 @@ from som.core.layout import Layout
 from som.policies.heuristics import remaining_work
 from som.sim.travel import TravelModel
 
-OBS_SCHEMA_VERSION = 1
+OBS_SCHEMA_VERSION = 2  # v2: factory summary ends with the share of robots in service
 
 TIME_SCALE_S = 200.0  # seconds-valued features are divided by this, then clipped
 TIME_CLIP = 3.0
@@ -71,7 +71,8 @@ def _remaining_ops(o: OrderView) -> float:
 
 
 def factory_summary(ctx: ObsContext, snap: CoreSnapshot) -> list[float]:
-    """Per-station waiting counts, then per machine: free input share, busy, time left, down."""
+    """Per-station waiting counts, then per machine: free input share, busy, time left, down,
+    then the share of ``max_robots`` that is in service."""
     counts = [0.0] * ctx.n_stations
     for o in snap.orders:
         i = ctx.station_index(o.location) if o.status in WAITING_STATUSES else None
@@ -80,6 +81,8 @@ def factory_summary(ctx: ObsContext, snap: CoreSnapshot) -> list[float]:
     out = counts
     for m in snap.machines:
         out += _machine_state(m, snap.now)
+    online = sum(r.status != "OFFLINE" for r in snap.robots)
+    out.append(online / ctx.max_robots)
     return out
 
 
@@ -110,7 +113,7 @@ def _free_share(snap: CoreSnapshot, ctx: ObsContext, process: str | None) -> flo
 
 def robot_obs_dim(ctx: ObsContext) -> int:
     s, m = ctx.n_stations, ctx.n_machines
-    return s + 2 + ctx.k_robot * (1 + 2 * s + 5) + (s + 4 * m) + s
+    return s + 2 + ctx.k_robot * (1 + 2 * s + 5) + (s + 4 * m + 1) + s
 
 
 def robot_obs(
@@ -157,7 +160,7 @@ def robot_obs(
 
 def machine_obs_dim(ctx: ObsContext) -> int:
     s, m = ctx.n_stations, ctx.n_machines
-    return m + 3 + ctx.k_machine * 6 + (s + 4 * m)
+    return m + 3 + ctx.k_machine * 6 + (s + 4 * m + 1)
 
 
 def machine_obs(

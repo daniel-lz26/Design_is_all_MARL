@@ -8,6 +8,7 @@ import pytest
 import torch
 
 from som.config.schema import EnvCfg, LayoutCfg, ScenarioCfg, TrainCfg
+from som.env.observations import OBS_SCHEMA_VERSION
 from som.eval.evaluate import run_one
 from som.eval.metrics import compute_metrics
 from som.policies.learned import LearnedPolicy
@@ -107,7 +108,11 @@ def test_artifact_round_trip(tiny_layout_cfg: LayoutCfg, tmp_path: Path) -> None
     trainer = MAPPOTrainer(_toy_cfg(total_steps=128), tiny_layout_cfg, toy, [], tmp_path)
     trainer.train(on_log=lambda s: None)
     actors, meta = load_artifact(tmp_path / "policy")
-    assert meta["obs_schema_version"] == 1 and meta["K_robot"] == 6 and meta["K_machine"] == 5
+    assert (
+        meta["obs_schema_version"] == OBS_SCHEMA_VERSION
+        and meta["K_robot"] == 6
+        and meta["K_machine"] == 5
+    )
     assert set(actors) == {"robot", "machine"}
     loaded = LearnedPolicy.from_artifact(tmp_path / "policy", tiny_layout_cfg)
     a = run_one(tiny_layout_cfg, toy, TOY_ENV, trainer.policy(), 0)
