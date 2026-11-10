@@ -3,6 +3,7 @@
     python scripts/evaluate_cell.py --policy NEAREST/FIFO --scenarios cell_10 cell_10_disrupt
     python scripts/evaluate_cell.py --policy baselines --workers 10        # every A, B, C baseline
     python scripts/evaluate_cell.py --policy my_method --checkpoint runs/x/policy --split test
+    python scripts/evaluate_cell.py --policy baselines --skip-existing  # resume, e.g. on another PC
 
 Writes results/<policy>/<scenario>.csv (one row per seed; ``_<n>r`` is appended when
 ``--robots`` overrides the scenario) and a Gantt chart of the first seed. Every row records the
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import multiprocessing
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -106,7 +108,12 @@ def main() -> None:
     ap.add_argument("--split", choices=["train", "val", "test"], default="test")
     ap.add_argument("--robots", type=int, default=None, help="override the robot count")
     ap.add_argument("--seeds", type=int, default=None, help="only the first N seeds of the split")
-    ap.add_argument("--workers", type=int, default=1)
+    ap.add_argument(
+        "--workers", type=int, default=1, help="parallel jobs; central jobs use 4 threads each"
+    )
+    ap.add_argument(
+        "--skip-existing", action="store_true", help="skip jobs whose csv already exists"
+    )
     ap.add_argument("--out", default=str(ROOT / "results"))
     args = ap.parse_args()
 
@@ -121,6 +128,15 @@ def main() -> None:
         for p in policies
         for s in args.scenarios
     ]
+    if args.skip_existing:
+
+        def done(job: tuple) -> bool:
+            tag = f"{job[2]}_{args.robots}r" if args.robots else job[2]
+            return (Path(args.out) / safe(job[0]) / f"{tag}.csv").exists()
+
+        skipped = [j for j in jobs if done(j)]
+        jobs = [j for j in jobs if not done(j)]
+        print(f"skipping {len(skipped)} jobs with existing results", flush=True)
     print(
         f"{len(jobs)} jobs ({len(policies)} policies x {len(args.scenarios)} scenarios), "
         f"env {version}",
@@ -130,7 +146,9 @@ def main() -> None:
         for j in jobs:
             print(*run_job(*j), flush=True)
         return
-    with ProcessPoolExecutor(args.workers) as pool:
+    # spawn on every OS: Linux's default fork can hang once OR-Tools or torch are loaded
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(args.workers, mp_context=ctx) as pool:
         futures = [pool.submit(run_job, *j) for j in jobs]
         for f in as_completed(futures):
             print(*f.result(), flush=True)
