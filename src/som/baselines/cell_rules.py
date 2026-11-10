@@ -8,32 +8,17 @@ spot (``idle="park"``). The machine rule is the cell's ``machine_seq_rule`` (FIF
 
 from __future__ import annotations
 
-import itertools
-
 import numpy as np
 
 from som.cell_env.des import CellSim
 from som.cell_env.entities import Box, Station
+from som.cell_env.estimates import remaining_proc, slack
+from som.cell_env.obs import S, T
 
 ROBOT_RULES = ("NEAREST", "FIFO", "EDD", "SPT", "MST", "BOTTLENECK", "RANDOM")
 MACHINE_RULES = ("FIFO", "EDD", "SPT")
 BOTTLENECK_PROCESS = "Milling"
-
-
-def remaining_proc(box: Box) -> float:
-    return sum(box.spec.proc[box.step :])
-
-
-def remaining_work(sim: CellSim, box: Box, start: str) -> float:
-    """Seconds to finish ``box`` from robot node ``start``: travel, docking, handoffs, process."""
-    h = sim.h
-    stops = [sim.stations[box.where]]
-    stops += [sim.stations[sim.machine_of[p]] for p in box.spec.route[box.step :]]
-    stops.append(sim.stations[sim.sink])
-    leg = 2 * (h.dock_time_s + h.undock_time_s) + h.arm_load_s + h.arm_unload_s
-    t = sim.roadmap.time(start, stops[0].approach)
-    t += sum(sim.roadmap.time(a.approach, b.approach) + leg for a, b in itertools.pairwise(stops))
-    return t + remaining_proc(box)
+BOTTLENECK_STATION = "MILLING"
 
 
 def starving(st: Station) -> bool:
@@ -93,7 +78,7 @@ class CellRulePolicy:
             return b.spec.due
         if rule == "SPT":
             return remaining_proc(b)
-        return b.spec.due - sim.now - remaining_work(sim, b, here)  # MST
+        return slack(sim, b, here)  # MST
 
 
 def all_rule_pairs() -> list[CellRulePolicy]:
@@ -109,3 +94,60 @@ def run_rule_episode(sim: CellSim, policy: CellRulePolicy, seed: int) -> None:
             if sim.mask(rid).any() and rid in sim.pending():
                 sim.act(rid, policy.choose(sim, rid))
         pending = sim.advance()
+
+
+class ObsRulePolicy:
+    """The same rules, decided from each robot's observation alone (C1: no global state).
+
+    Gives exactly the decisions of ``CellRulePolicy`` (a test checks this), so the
+    simulator-side version can serve as a fast reference for calibration.
+    """
+
+    decentralized = True
+
+    def __init__(self, robot_rule: str, machine_rule: str = "FIFO", idle: str = "wait") -> None:
+        if robot_rule not in ROBOT_RULES:
+            raise ValueError(f"unknown robot rule {robot_rule!r}; choose from {ROBOT_RULES}")
+        self.robot_rule = robot_rule
+        self.machine_rule = machine_rule
+        self.idle = idle
+        self.name = f"{robot_rule}/{machine_rule}"
+        self.rng = np.random.default_rng(0)
+
+    def reset(self, scenario_info: dict) -> None:
+        self.layout = scenario_info["obs_layout"]
+        self.acts = scenario_info["actions"]
+        self.rng = np.random.default_rng(scenario_info["seed"])
+        self.mill = scenario_info["stations"].index(BOTTLENECK_STATION)
+
+    def act(self, obs: dict, masks: dict, global_state: dict | None = None) -> dict[str, int]:
+        return {a: self._one(obs[a], masks[a]) for a in obs}
+
+    def _one(self, o: np.ndarray, m: np.ndarray) -> int:
+        if m[self.acts["noop"]]:
+            return int(self.acts["noop"])
+        tasks = self.layout.tasks(o)
+        valid = int(tasks[:, T["valid"]].sum())
+        if valid == 0:
+            park = self.acts["park"]
+            return int(park if self.idle == "park" and m[park] else self.acts["wait"])
+        rows = tasks[:valid]
+        rule = self.robot_rule
+        if rule == "RANDOM":
+            return int(self.rng.integers(valid))
+        if rule == "BOTTLENECK":
+            st = self.layout.stations(o)[self.mill]
+            starving = st[S["in_occupancy"]] == 0 and st[S["inbound"]] == 0
+            starving = starving and st[S["machine_blocked"]] == 0
+            feeds = np.flatnonzero(rows[:, T["dest_is_bottleneck"]] > 0)
+            if len(feeds) and starving:
+                return int(feeds[np.argmin(rows[feeds, T["travel_to_pickup"]])])
+            rule = "NEAREST"
+        col = {
+            "NEAREST": rows[:, T["travel_to_pickup"]],
+            "FIFO": -rows[:, T["waiting_time"]],
+            "EDD": rows[:, T["due_in"]],
+            "SPT": rows[:, T["remaining_proc"]],
+            "MST": rows[:, T["slack"]],
+        }[rule]
+        return int(np.argmin(col))
