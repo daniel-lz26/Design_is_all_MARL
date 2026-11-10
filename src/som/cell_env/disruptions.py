@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from som.cell_env.orders import OrderSpec, work_estimate
+from som.cell_env.orders import OrderSpec, min_flow_time
 from som.cell_env.roadmap import Roadmap
-from som.config.cell_schema import CellDisruptionCfg, CellLayoutCfg
+from som.config.cell_schema import CellDisruptionCfg, CellLayoutCfg, HandlingCfg
 
 # Event kinds a schedule may contain (handled by CellSim).
 ROBOT_DOWN, ROBOT_UP, ARM_DOWN, ARM_UP = "ROBOT_DOWN", "ROBOT_UP", "ARM_DOWN", "ARM_UP"
@@ -32,6 +32,7 @@ def draw(
     cfg: CellDisruptionCfg,
     robots: list[str],
     layout: CellLayoutCfg,
+    handling: HandlingCfg,
     roadmap: Roadmap,
     orders: list[OrderSpec],
     rng: np.random.Generator,
@@ -75,7 +76,8 @@ def draw(
         like = orders[int(rng.integers(len(orders)))]
         t = window()
         k = float(rng.uniform(*cfg.rush_slack_k))
-        due = t + k * work_estimate(like.route, like.proc, layout, roadmap)
+        mf = min_flow_time(like.route, like.proc, layout, handling, roadmap)
+        due = t + k * mf
         n = max(o.number for o in orders) + 1
         s.rush_orders.append(
             OrderSpec(
@@ -87,11 +89,14 @@ def draw(
                 round(t, 3),
                 round(due, 3),
                 rush=True,
+                min_flow=mf,
             )
         )
     if cfg.robot_join_at_s is not None and len(robots) > 1:
-        s.absent.append(robots[-1])
-        s.events.append((float(rng.uniform(*cfg.robot_join_at_s)), JOIN, robots[-1]))
+        lo, hi = cfg.robot_join_absent
+        n_absent = min(int(rng.integers(lo, hi + 1)), len(robots) - 1)
+        s.absent += robots[len(robots) - n_absent :]
+        s.events.append((float(rng.uniform(*cfg.robot_join_at_s)), JOIN, s.absent[0]))
     if rng.random() < cfg.coordinator_outage_p:
         t = window()
         s.coordinator_outages.append((t, t + float(rng.uniform(*cfg.coordinator_outage_s))))

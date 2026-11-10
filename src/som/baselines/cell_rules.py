@@ -26,12 +26,11 @@ def remaining_proc(box: Box) -> float:
 
 def remaining_work(sim: CellSim, box: Box, start: str) -> float:
     """Seconds to finish ``box`` from robot node ``start``: travel, docking, handoffs, process."""
-    lay = sim.layout
-    r = lay.robot
+    h = sim.h
     stops = [sim.stations[box.where]]
     stops += [sim.stations[sim.machine_of[p]] for p in box.spec.route[box.step :]]
     stops.append(sim.stations[sim.sink])
-    leg = 2 * (r.dock_time_s + r.undock_time_s) + lay.arm_load_s + lay.arm_unload_s
+    leg = 2 * (h.dock_time_s + h.undock_time_s) + h.arm_load_s + h.arm_unload_s
     t = sim.roadmap.time(start, stops[0].approach)
     t += sum(sim.roadmap.time(a.approach, b.approach) + leg for a, b in itertools.pairwise(stops))
     return t + remaining_proc(box)

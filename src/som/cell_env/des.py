@@ -60,6 +60,8 @@ class CellSim:
         self.roadmap = Roadmap(layout)
         self.k = scenario.k_tasks
         self.machine_rule = scenario.machine_seq_rule  # baselines may override per run
+        self.machine_priority: dict[str, float] | None = None  # set by planners: lowest first
+        self.h = scenario.handling or layout.handling
         self.robot_ids = [f"agv_{i + 1}" for i in range(scenario.n_robots)]
         if scenario.n_robots > len(layout.parking):
             raise ValueError("more robots than parking spots")
@@ -79,10 +81,12 @@ class CellSim:
             e.occupants.clear()
             e.waiters.clear()
             e.closed = False
-        orders = build_orders(cfg, lay, self.roadmap, orders_rng, self.root)
-        self.schedule = dz.draw(cfg.disruptions, self.robot_ids, lay, self.roadmap, orders, dis_rng)
+        orders = build_orders(cfg, lay, self.h, self.roadmap, orders_rng, self.root)
+        self.schedule = dz.draw(
+            cfg.disruptions, self.robot_ids, lay, self.h, self.roadmap, orders, dis_rng
+        )
         orders = orders + self.schedule.rush_orders
-        self.t_max = cfg.t_max or 2.0 * max(o.due for o in orders)
+        self.t_max = cfg.t_max or 3.0 * max(o.due for o in orders)
         self.now = 0.0
         self._heap: list[tuple[float, int, int, str, int]] = []
         self._seq = 0
@@ -97,8 +101,8 @@ class CellSim:
                 s.approach,
                 s.in_buffer_cap,
                 s.out_buffer_cap,
-                s.arm_load_s or lay.arm_load_s,
-                s.arm_unload_s or lay.arm_unload_s,
+                s.arm_load_s or self.h.arm_load_s,
+                s.arm_unload_s or self.h.arm_unload_s,
             )
             for k, s in lay.stations.items()
         }
@@ -114,6 +118,8 @@ class CellSim:
             self.log.robot_states[r.id] = []
             self.log.moves[r.id] = []
             self.log.carrying[r.id] = [(0.0, None)]
+            self.log.claims[r.id] = [(0.0, None)]
+            self.log.down_at[r.id] = []
             absent = r.id in self.schedule.absent
             self._set(r, RS.ABSENT if absent else RS.IDLE_PARKED)
             r.needs_decision = False
@@ -213,6 +219,7 @@ class CellSim:
         box.claimed_by = r.id
         self.next_station(box).inbound += 1
         r.task = box.id
+        self.log.claims[r.id].append((self.now, box.id))
         r.purpose = "pickup"
         if r.docked_at == box.where:
             self._request_arm(r, self.stations[box.where])
@@ -305,7 +312,7 @@ class CellSim:
         if r.docked_at is not None:
             st = self.stations[r.docked_at]
             self._set(r, RS.UNDOCKING)
-            dur = self.layout.robot.undock_time_s + self.roadmap.edge_time(st.approach, st.dock)
+            dur = self.h.undock_time_s + self.roadmap.edge_time(st.approach, st.dock)
             self._push(self.now + dur, UNDOCK_DONE, r.id, r.token)
         else:
             self._continue(r)
@@ -419,7 +426,8 @@ class CellSim:
     def _grant_dock(self, r: Robot, st: Station) -> None:
         st.dock_holder = r.id
         self._set(r, RS.DOCKING)
-        dur = self.layout.robot.dock_time_s + self.roadmap.edge_time(st.approach, st.dock)
+        dur = self.h.dock_time_s + self.roadmap.edge_time(st.approach, st.dock)
+        self.log.docks.append((r.id, st.key, self.now, None))
         self._push(self.now + dur, DOCK_DONE, r.id, r.token)
 
     def _dock_done(self, r: Robot) -> None:
@@ -432,8 +440,16 @@ class CellSim:
         st = self.stations[r.docked_at or ""]
         r.docked_at = None
         r.prev, r.node = st.dock, st.approach
+        self._close_dock(r.id)
         self._release_dock(st)
         self._continue(r)
+
+    def _close_dock(self, rid: str) -> None:
+        for i in range(len(self.log.docks) - 1, -1, -1):
+            d = self.log.docks[i]
+            if d[0] == rid and d[3] is None:
+                self.log.docks[i] = (*d[:3], self.now)
+                return
 
     def _release_dock(self, st: Station) -> None:
         st.dock_holder = None
@@ -492,6 +508,7 @@ class CellSim:
             r.box = r.task = None
             r.purpose = None
             self.log.carrying[r.id].append((self.now, None))
+            self.log.claims[r.id].append((self.now, None))
             st.inbound -= 1
             box.claimed_by = None
             if st.kind == "sink":
@@ -524,7 +541,10 @@ class CellSim:
         if st.kind != "machine" or st.down or st.current or st.blocked_box or not st.in_buf:
             return
         rule = self.machine_rule
-        if rule == "FIFO":
+        if self.machine_priority is not None:
+            pri = self.machine_priority
+            bid = min(st.in_buf, key=lambda b: (pri.get(b, math.inf), self.boxes[b].spec.number))
+        elif rule == "FIFO":
             bid = st.in_buf[0]
         elif rule == "EDD":
             bid = min(st.in_buf, key=lambda b: (self.boxes[b].spec.due, self.boxes[b].spec.number))
@@ -536,7 +556,7 @@ class CellSim:
         box = self.boxes[bid]
         box.loc, box.where = Loc.MACHINE, st.key
         st.current = bid
-        dur = self.layout.conveyor_transfer_s + self._proc(box)
+        dur = self.h.conveyor_transfer_s + self._proc(box)
         sigma = self.cfg.noise.process_sigma
         if sigma > 0:
             dur *= float(np.exp(self.proc_rng.normal(-0.5 * sigma * sigma, sigma)))
@@ -650,6 +670,8 @@ class CellSim:
             box.claimed_by = None
             self.next_station(box).inbound -= 1
             r.task = None
+            self.log.claims[r.id].append((self.now, None))
+        self.log.down_at[r.id].append((self.now, r.down_xy or self.roadmap.xy[r.node]))
         if r.box is not None and dz_cfg.rescue:
             self._push(self.now + dz_cfg.rescue_delay_s, RESCUE, r.id, r.token)
         if r.holds_spot:
@@ -674,6 +696,7 @@ class CellSim:
             if st.dock_holder == r.id:
                 r.docked_at = None
                 r.prev, r.node = st.dock, st.approach
+                self._close_dock(r.id)
                 self._release_dock(st)
 
     def _rescue(self, r: Robot) -> None:
@@ -698,6 +721,7 @@ class CellSim:
         r.box = r.task = None
         r.purpose = None
         self.log.carrying[r.id].append((self.now, None))
+        self.log.claims[r.id].append((self.now, None))
         self._put_out(st, box)
 
     def _robot_up(self, r: Robot) -> None:
