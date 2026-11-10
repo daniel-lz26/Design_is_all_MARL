@@ -15,7 +15,7 @@ noise as evaluating a policy on seed ``s``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from gymnasium import spaces
@@ -24,7 +24,7 @@ from pettingzoo import ParallelEnv
 from som.config.schema import EnvCfg, LayoutCfg, RewardCfg, ScenarioCfg
 from som.core.decisions import WAIT, Candidate, Choice, DecisionRequest
 from som.core.history import EpisodeLog
-from som.core.ids import role_of, robot_id
+from som.core.ids import robot_id, role_of
 from som.core.layout import Layout
 from som.env.candidates import action_mask, slot_candidates
 from som.env.global_state import agent_onehot, base_state, state_dim
@@ -47,7 +47,7 @@ def make_context(layout_cfg: LayoutCfg, scenario_cfg: ScenarioCfg, env_cfg: EnvC
 
 
 class SomParallelEnv(ParallelEnv):  # type: ignore[misc]
-    metadata = {"name": "som_v1", "render_modes": []}
+    metadata: ClassVar[dict[str, Any]] = {"name": "som_v1", "render_modes": []}
 
     def __init__(
         self,
@@ -129,9 +129,7 @@ class SomParallelEnv(ParallelEnv):  # type: ignore[misc]
 
     def step(
         self, actions: dict[str, int]
-    ) -> tuple[
-        dict[str, Any], dict[str, float], dict[str, bool], dict[str, bool], dict[str, Any]
-    ]:
+    ) -> tuple[dict[str, Any], dict[str, float], dict[str, bool], dict[str, bool], dict[str, Any]]:
         rt = self._rt()
         core = rt.core
         t0 = rt.now

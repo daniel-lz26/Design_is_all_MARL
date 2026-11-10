@@ -20,9 +20,7 @@ def slot_candidates(request: DecisionRequest | None, k: int) -> tuple[list[Candi
     return cands[:k], max(0, len(cands) - k)
 
 
-def action_mask(
-    request: DecisionRequest | None, k: int, wait_allowed: bool = True
-) -> np.ndarray:
+def action_mask(request: DecisionRequest | None, k: int, wait_allowed: bool = True) -> np.ndarray:
     """Boolean mask of length k + 1. An agent without a request may only NOOP (slot 0)."""
     mask = np.zeros(k + 1, dtype=np.int8)
     if request is None:

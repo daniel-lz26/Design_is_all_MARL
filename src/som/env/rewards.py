@@ -29,9 +29,7 @@ class OpenOrder:
 def open_orders(core: FactoryCore) -> list[OpenOrder]:
     """Orders not yet delivered; take this at t0 and pass it to ``RewardFn.compute``."""
     return [
-        OpenOrder(o.id, o.spec.due_time)
-        for o in core.orders.values()
-        if o.delivered_time is None
+        OpenOrder(o.id, o.spec.due_time) for o in core.orders.values() if o.delivered_time is None
     ]
 
 

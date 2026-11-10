@@ -167,7 +167,7 @@ def machine_obs(
     station = ctx.layout.station(me.station)
     idx = next(i for i, st in enumerate(ctx.layout.machines) if st.id == me.station)
     out = onehot(idx, ctx.n_machines)
-    out += _machine_state(me, snap.now)[1:3] + [snap.now / ctx.horizon]
+    out += [*_machine_state(me, snap.now)[1:3], snap.now / ctx.horizon]
     for k in range(ctx.k_machine):
         if k >= len(slots):
             out += [0.0] * 6

@@ -5,8 +5,8 @@ import pytest
 from pettingzoo.test import parallel_api_test
 
 from som.config.schema import EnvCfg, LayoutCfg, RewardCfg, ScenarioCfg
-from som.env.parallel_env import SomParallelEnv
 from som.core.layout import Layout
+from som.env.parallel_env import SomParallelEnv
 from som.eval.evaluate import run_one
 from som.policies.heuristics import make_policy
 from som.sim.travel import StraightLineTravel
