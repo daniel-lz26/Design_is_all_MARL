@@ -75,8 +75,19 @@ Starts while M2 runs are training.
 - [ ] L: `ros2` backend (action clients, arena→odom conversion)
 - [ ] H: H1–H5 (shared domain + namespaces, access point, arena taped and measured, controller on tb1, then tb2)
 - [ ] L: update `arena_13x6ft.yaml` with measured coordinates
-- [ ] *(Stretch, only if the Nov 8 gate passed)* train `mappo_2r_disrupt` with random machine down/up and
-      rush orders; add a disruption-recovery row to the results; add machine toggles to the dashboard
+- [x] *(Stretch)* disruption training, done in sim on Nov 9 with 4 robots (`mappo_4r_disrupt`): blocked
+      and delayed trips, machine breakdowns, robot outages (`RobotDown`/`RobotUp`). Rush orders and
+      dashboard machine toggles are not done yet.
+
+> **Disruption result (Nov 9, placeholder inputs, 4 robots, 1.5M steps, 3 seeds, 20 eval seeds,
+> paired by seed):** on `abstract_10_disrupt` both MAPPO families beat the best heuristic (NEAREST/FIFO,
+> 24.5%): `mappo_4r` 32.3% (+7.8 ± 4.0 points), `mappo_4r_disrupt` 31.3% (+6.8 ± 4.2). Heuristics lose
+> 19 points under disruption (43.5% → 24.5%), MAPPO about 11 (43.8% → 32.3%). Without disruptions it is a
+> tie (`mappo_4r` +0.3 ± 2.4). Training *with* disruptions did not add robustness over normal training
+> (−1.0 ± 2.4 on `abstract_10_disrupt`; −1.8 ± 2.1 on `abstract_10`). Most of the gain comes from the
+> learned machine policy: learned robots with EDD machines drop to 22–24%. Held-out
+> `random_10_disrupt` (seeds 2000–2019): +1.5 to +2.0 points, not significant. Tables:
+> `reports/results_*_4r.md`.
 
 **Accept:** `make lab CFG=configs/deploy/desk_kinematic.yaml` runs end to end and the recorded log scores
 with `som.eval`. On hardware, `ros2 action send_goal /tb1/go_to_pose ...` reaches a station within 5 cm.
