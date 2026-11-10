@@ -1,0 +1,40 @@
+# Primary run: MAPPO, 2 robots, trained on random_10, evaluated on abstract_10 (never trained on).
+# random_10 inherits PLACEHOLDER release/process times from abstract_10; retrain once they are real.
+name: mappo_2r
+layout: configs/layouts/arena_13x6ft.yaml
+scenario: configs/scenarios/random_10.yaml
+eval_scenarios: [configs/scenarios/abstract_10.yaml]
+critic_mode: central
+
+env:
+  n_robots: 2
+  max_robots: 4
+  k_robot: 6
+  k_machine: 5
+  robot_wait_allowed: false
+  machine_wait_allowed: false
+  travel_noise_sigma: 0.1
+
+reward:
+  mode: team
+  w_deliver: 1.0
+  w_tardy: 0.01
+  w_ontime: 1.0
+  w_time: 0.0
+
+total_steps: 1000000   # env steps (decision points), not seconds
+n_envs: 8
+rollout_steps: 256
+update_epochs: 4
+minibatches: 4
+lr: 3.0e-4
+gamma: 0.995           # per simulated second
+gae_lambda: 0.95
+clip: 0.2
+entropy_coef: 0.01
+value_coef: 0.5
+max_grad_norm: 0.5
+hidden: [128, 128]
+seed: 0
+eval_every: 10
+eval_seeds: [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009]
