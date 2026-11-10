@@ -1,0 +1,95 @@
+# Default Smart Assembly Cell floor (CELL_ENV_SPEC.md §3), 6.0 x 4.0 m.
+# PLACEHOLDER: every coordinate, length and timing here follows the spec's sketch and defaults.
+# Replace with the Isaac Sim USD coordinates and the measured testbed values when available.
+#
+#   y=3.8   PK1   PK2   PK3   PK4                 parking (spurs, single lane)
+#   y=3.4   U0----U1----U2----U3--------U4        top aisle (2 lanes)
+#           |            ║               |
+#   y=2.4   |    dT      ║      dG       |        docks above the main aisle
+#   y=2.0 dS-A0----A1----A2----A3--------A4-dK    main aisle (2 lanes)
+#           |    dM      ║      dD       |        docks below the main aisle
+#           |            ║               |
+#   y=0.5   B0-----------B2--------------B4       bottom aisle (single lane)
+#   ║ = single-lane cross aisle; the side links are single lane too.
+name: sac_6x4
+floor_m: [6.0, 4.0]
+
+nodes:
+  dS: [0.15, 2.0]
+  A0: [0.6, 2.0]
+  A1: [1.5, 2.0]
+  A2: [2.6, 2.0]
+  A3: [3.7, 2.0]
+  A4: [5.4, 2.0]
+  dK: [5.85, 2.0]
+  dT: [1.5, 2.45]
+  dM: [1.5, 1.55]
+  dG: [3.7, 2.45]
+  dD: [3.7, 1.55]
+  U0: [0.6, 3.4]
+  U1: [1.5, 3.4]
+  U2: [2.6, 3.4]
+  U3: [3.7, 3.4]
+  U4: [5.4, 3.4]
+  PK1: [0.6, 3.8]
+  PK2: [1.5, 3.8]
+  PK3: [2.6, 3.8]
+  PK4: [3.7, 3.8]
+  B0: [0.6, 0.5]
+  B2: [2.6, 0.5]
+  B4: [5.4, 0.5]
+
+edges:
+  # main aisle, two lanes
+  - {a: A0, b: A1}
+  - {a: A1, b: A2}
+  - {a: A2, b: A3}
+  - {a: A3, b: A4}
+  # top aisle, two lanes
+  - {a: U0, b: U1}
+  - {a: U1, b: U2}
+  - {a: U2, b: U3}
+  - {a: U3, b: U4}
+  # side links and the cross aisle, single lane
+  - {a: U0, b: A0, capacity: 1}
+  - {a: U4, b: A4, capacity: 1}
+  - {a: U2, b: A2, capacity: 1}
+  - {a: A2, b: B2, capacity: 1}
+  # bottom aisle, single lane
+  - {a: B0, b: B2, capacity: 1}
+  - {a: B2, b: B4, capacity: 1}
+  - {a: B0, b: A0, capacity: 1}
+  - {a: B4, b: A4, capacity: 1}
+  # dock spurs (used only by the robot holding the dock)
+  - {a: A0, b: dS, capacity: 1}
+  - {a: A1, b: dT, capacity: 1}
+  - {a: A1, b: dM, capacity: 1}
+  - {a: A3, b: dG, capacity: 1}
+  - {a: A3, b: dD, capacity: 1}
+  - {a: A4, b: dK, capacity: 1}
+  # parking spurs
+  - {a: U0, b: PK1, capacity: 1}
+  - {a: U1, b: PK2, capacity: 1}
+  - {a: U2, b: PK3, capacity: 1}
+  - {a: U3, b: PK4, capacity: 1}
+
+stations:
+  SRC: {kind: source, dock: dS, approach: A0}
+  TURNING: {kind: machine, process: Turning, dock: dT, approach: A1, in_buffer_cap: 3, out_buffer_cap: 2}
+  GRINDING: {kind: machine, process: Grinding, dock: dG, approach: A3, in_buffer_cap: 3, out_buffer_cap: 2}
+  MILLING: {kind: machine, process: Milling, dock: dM, approach: A1, in_buffer_cap: 3, out_buffer_cap: 2}
+  DRILLING: {kind: machine, process: Drilling, dock: dD, approach: A3, in_buffer_cap: 3, out_buffer_cap: 2}
+  SINK: {kind: sink, dock: dK, approach: A4}
+
+parking: [PK1, PK2, PK3, PK4]
+
+robot:
+  v_cruise: 0.18          # PLACEHOLDER m/s (Burger max ~0.22)
+  turn_penalty_s: 1.5     # PLACEHOLDER per heading change > 45 deg
+  turn_threshold_deg: 45
+  dock_time_s: 3.0        # PLACEHOLDER
+  undock_time_s: 1.5      # PLACEHOLDER
+
+arm_load_s: 6.0           # PLACEHOLDER: measure from the Isaac Sim Franka pick/place cycle
+arm_unload_s: 6.0         # PLACEHOLDER
+conveyor_transfer_s: 2.0  # PLACEHOLDER

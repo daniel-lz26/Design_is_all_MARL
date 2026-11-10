@@ -1,0 +1,8 @@
+# cell_10: the abstract_10 orders (routes, due times, release and process times) in the cell.
+# Deterministic: no noise, no disruptions. Orders are read from abstract_10.yaml, the source of
+# truth, so the two scenarios cannot drift. Its release and process times are PLACEHOLDER.
+name: cell_10
+layout: configs/cell_layouts/sac_6x4.yaml
+n_robots: 4
+orders_from: configs/scenarios/abstract_10.yaml
+machine_seq_rule: FIFO

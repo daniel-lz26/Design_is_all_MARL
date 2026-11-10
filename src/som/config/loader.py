@@ -8,6 +8,7 @@ from typing import TypeVar
 import yaml
 from pydantic import BaseModel
 
+from som.config.cell_schema import CellLayoutCfg, CellScenarioCfg
 from som.config.schema import DeployCfg, LayoutCfg, ScenarioCfg, TrainCfg
 
 M = TypeVar("M", bound=BaseModel)
@@ -18,6 +19,8 @@ SCHEMA_BY_DIR: dict[str, type[BaseModel]] = {
     "scenarios": ScenarioCfg,
     "train": TrainCfg,
     "deploy": DeployCfg,
+    "cell": CellScenarioCfg,
+    "cell_layouts": CellLayoutCfg,
 }
 
 
