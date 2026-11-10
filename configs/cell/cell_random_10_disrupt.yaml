@@ -1,0 +1,38 @@
+# cell_random_10_disrupt: cell_random_10 plus the spec §6 disruptions (design rates).
+name: cell_random_10_disrupt
+layout: configs/cell_layouts/sac_6x4.yaml
+n_robots: 4
+machine_seq_rule: FIFO
+generator:
+  n_orders: 10
+  job_types:
+    P1: [Turning, Grinding]
+    P2: [Turning, Milling, Drilling]
+    P3: [Milling]
+    P4: [Milling, Drilling]
+  job_mix: {P1: 2, P2: 3, P3: 3, P4: 2}
+  mean_process_s: {Turning: 30, Grinding: 20, Milling: 40, Drilling: 10}   # PLACEHOLDER means
+  process_jitter: 0.25
+  arrivals: poisson
+  mean_interarrival_s: 25.6
+  first_release_s: 10
+  due_k: [1.45, 1.95]           # calibrated on cell_random_10 validation seeds (k = 1.70 +/- 0.25)
+noise:
+  speed_sigma: 0.05
+  arm_tri: 0.10
+  process_sigma: 0.10
+disruptions:
+  robot_down: permanent          # one robot fails at U(80, 220) s for the rest of the run
+  robot_down_at_s: [80, 220]
+  rescue: true                   # its box goes to the nearest station (matches abstract runs)
+  rescue_delay_s: 20
+  clear_delay_s: 20
+  arm_fault_p: 0.3
+  arm_fault_s: [20, 60]
+  machine_fault_p: 0.3
+  machine_fault_s: [30, 90]
+  aisle_block_p: 0.3
+  aisle_block_s: [30, 120]
+  rush_order_p: 0.5
+  coordinator_outage_p: 0.5      # affects the central baselines only
+  coordinator_outage_s: [30, 90]

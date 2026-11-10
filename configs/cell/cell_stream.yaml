@@ -1,0 +1,24 @@
+# cell_stream: Poisson arrivals for 900 s at a 40 s mean gap (~23 orders), steady-state test.
+name: cell_stream
+layout: configs/cell_layouts/sac_6x4.yaml
+n_robots: 4
+machine_seq_rule: FIFO
+generator:
+  n_orders: 200
+  job_types:
+    P1: [Turning, Grinding]
+    P2: [Turning, Milling, Drilling]
+    P3: [Milling]
+    P4: [Milling, Drilling]
+  job_mix: {P1: 2, P2: 3, P3: 3, P4: 2}
+  mean_process_s: {Turning: 30, Grinding: 20, Milling: 40, Drilling: 10}   # PLACEHOLDER means
+  process_jitter: 0.25
+  arrivals: poisson
+  mean_interarrival_s: 40.0
+  first_release_s: 10
+  due_k: [1.45, 1.95]           # calibrated on cell_random_10 validation seeds (k = 1.70 +/- 0.25)
+  release_until_s: 900
+noise:
+  speed_sigma: 0.05
+  arm_tri: 0.10
+  process_sigma: 0.10

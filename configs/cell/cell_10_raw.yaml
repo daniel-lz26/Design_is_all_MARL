@@ -1,0 +1,7 @@
+# cell_10_raw: cell_10 with abstract_10's original due dates (due - release = 135 s for every
+# order). Infeasible in the cell for 7 of 10 orders even alone, so report tardiness here.
+name: cell_10_raw
+layout: configs/cell_layouts/sac_6x4.yaml
+n_robots: 4
+orders_from: configs/scenarios/abstract_10.yaml
+machine_seq_rule: FIFO

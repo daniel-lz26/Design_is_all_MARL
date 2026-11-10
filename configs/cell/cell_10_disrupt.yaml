@@ -1,0 +1,23 @@
+# cell_10_disrupt: cell_10 plus the spec §6 disruptions. Rates are scenario design choices,
+# not measurements. Counterpart of abstract_10_disrupt.
+name: cell_10_disrupt
+layout: configs/cell_layouts/sac_6x4.yaml
+n_robots: 4
+orders_from: configs/scenarios/abstract_10.yaml
+due_k: 1.50
+machine_seq_rule: FIFO
+disruptions:
+  robot_down: permanent          # one robot fails at U(80, 220) s for the rest of the run
+  robot_down_at_s: [80, 220]
+  rescue: true                   # its box goes to the nearest station (matches abstract runs)
+  rescue_delay_s: 20
+  clear_delay_s: 20
+  arm_fault_p: 0.3
+  arm_fault_s: [20, 60]
+  machine_fault_p: 0.3
+  machine_fault_s: [30, 90]
+  aisle_block_p: 0.3
+  aisle_block_s: [30, 120]
+  rush_order_p: 0.5
+  coordinator_outage_p: 0.5      # affects the central baselines only
+  coordinator_outage_s: [30, 90]
