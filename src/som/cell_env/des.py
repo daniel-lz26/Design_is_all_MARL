@@ -62,6 +62,7 @@ class CellSim:
         self.machine_rule = scenario.machine_seq_rule  # baselines may override per run
         self.machine_priority: dict[str, float] | None = None  # set by planners: lowest first
         self.h = scenario.handling or layout.handling
+        self.debug = False  # run check_invariants after every event and action
         self.robot_ids = [f"agv_{i + 1}" for i in range(scenario.n_robots)]
         if scenario.n_robots > len(layout.parking):
             raise ValueError("more robots than parking spots")
@@ -214,6 +215,15 @@ class CellSim:
             r.wait_until = self.now + self.cfg.wait_cap_s
             self._push(r.wait_until, WAIT_END, r.id, r.token)
             self._leave(r)
+        self._check()
+
+    def _check(self) -> None:
+        if self.debug:
+            from som.cell_env.invariants import check_invariants
+
+            problems = check_invariants(self)
+            if problems:
+                raise AssertionError(f"t={self.now:.2f}: " + "; ".join(problems))
 
     def _claim(self, r: Robot, box: Box) -> None:
         box.claimed_by = r.id
@@ -247,6 +257,7 @@ class CellSim:
             t, _, kind, arg, token = heapq.heappop(heap)
             self.now = t
             self._dispatch(kind, arg, token)
+            self._check()
 
     def _finish(self) -> None:
         log = self.log
