@@ -8,4 +8,5 @@ pydantic>=2.6
 pyyaml>=6.0
 matplotlib>=3.8
 tensorboard>=2.16
+ortools>=9.10        # CP-SAT central-scheduler baselines (cell env)
 pygame>=2.5          # optional: live dashboard

@@ -19,6 +19,7 @@ dependencies = [
     "pyyaml>=6.0",
     "matplotlib>=3.8",
     "tensorboard>=2.16",
+    "ortools>=9.10",  # CP-SAT central-scheduler baselines (cell env)
 ]
 
 [project.optional-dependencies]
