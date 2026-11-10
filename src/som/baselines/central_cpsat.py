@@ -82,6 +82,7 @@ class CentralPolicy:
         self.acts = scenario_info["actions"]
         self.plan: Plan | None = None
         self.seen_outages = 0
+        self.stall_breaks = 0
         self.known: set[str] = set()
         self.solves: list[tuple[float, str, float]] = []  # (t, status, objective)
 
@@ -119,8 +120,46 @@ class CentralPolicy:
             if bid in board and b.step == step:
                 queue.pop(0)
                 return board.index(bid)
-            return wait  # not ready yet (or not in the top K of the board)
+            break  # not ready yet (or not in the top K of the board)
+        if self._stuck(sim):
+            return self._break_stall(sim, rid)
         return wait
+
+    def _stuck(self, sim: Any) -> bool:
+        """Nothing the plan is waiting for can still happen: no robot is doing anything, no
+        machine is processing (or down with a box it will resume), and no robot's next planned
+        leg is waiting for a release or ready for it to claim. The model ignores out-buffer
+        capacity, so a plan can deadlock the cell; only then does execution leave the plan."""
+        assert self.plan is not None
+        idle = (RS.IDLE, RS.IDLE_PARKED, RS.DOWN, RS.ABSENT)
+        if any(r.state not in idle for r in sim.robots.values()):
+            return False
+        if any(st.current is not None and st.blocked_box is None for st in sim.stations.values()):
+            return False
+        for r, q in self.plan.queues.items():
+            if not q:
+                continue
+            bid, step = q[0]
+            box = sim.boxes[bid]
+            if box.loc is Loc.PENDING:
+                return False  # waiting for a release
+            if box.step == step and r in sim.robots and bid in {t.id for t in sim.tasks(r)}:
+                return False  # its robot will claim it at its next decision
+        return True
+
+    def _break_stall(self, sim: Any, rid: str) -> int:
+        """Take the claimable leg the plan wanted to start first."""
+        assert self.plan is not None
+        board = [t.id for t in sim.tasks(rid)]
+        if not board:
+            return int(self.acts["wait"])
+        far = float("inf")
+        pick = min(
+            board,
+            key=lambda b: self.plan.starts.get((b, sim.boxes[b].step), far),  # type: ignore[union-attr]
+        )
+        self.stall_breaks += 1
+        return board.index(pick)
 
     def _needs_replan(self, sim: Any) -> bool:
         released = {b.id for b in sim.boxes.values() if b.loc is not Loc.PENDING}
@@ -157,8 +196,14 @@ class CentralPolicy:
             )
         else:
             self.plan = solve(sim, limit, self.workers, hints=self.plan)
-            if key is not None:
-                self._cache[key] = self.plan
+            if key is not None:  # cache a copy: execution pops legs off self.plan's queues
+                self._cache[key] = Plan(
+                    {r: list(q) for r, q in self.plan.queues.items()},
+                    dict(self.plan.priority),
+                    dict(self.plan.starts),
+                    self.plan.status,
+                    self.plan.objective,
+                )
         sim.machine_priority = dict(self.plan.priority)
         self.seen_outages = len(sim.log.outages)
         self.known = {

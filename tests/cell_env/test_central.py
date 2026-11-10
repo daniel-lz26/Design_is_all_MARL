@@ -60,3 +60,29 @@ def test_large_order_books_use_the_greedy_schedule() -> None:
     run_episode(env, pol, 20000)
     assert pol.solves[0][1] == "GREEDY"
     assert compute(env.sim.log).delivered == 30
+
+
+def test_one_policy_reused_across_seeds_keeps_its_plan() -> None:
+    """evaluate_cell reuses one policy per worker; a cached cell_10 plan must not be consumed."""
+    env = CellEnv("configs/cell/cell_10.yaml")
+    pol = make("CENTRAL_STATIC")
+    done = []
+    for seed in (20000, 20001, 20002):
+        run_episode(env, pol, seed)
+        done.append(compute(env.sim.log).delivered)
+    assert done == [10, 10, 10]
+    assert len(pol._cache) == 1
+
+
+def test_a_deadlocked_plan_is_broken_and_every_order_delivered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The model ignores out-buffer capacity, so with the production 10 s solve on this seed
+    every robot's next leg waited on a box stuck behind full out buffers and the cell stalled
+    until t_max."""
+    monkeypatch.setattr(cc, "RANDOM_LIMIT_S", 10.0)
+    env = CellEnv("configs/cell/cell_random_10.yaml")
+    pol = make("CENTRAL_REPLAN")
+    run_episode(env, pol, 20044)
+    assert compute(env.sim.log).delivered == len(env.sim.boxes)
+    assert pol.stall_breaks > 0
