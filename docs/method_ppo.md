@@ -162,6 +162,9 @@ check the baselines reproduce first:
 
 ## Results (full runs, 2026-11-10): not valid as a win, the policies abandon orders
 
+> **Superseded** by the work-conserving retrain below (2026-11-11). Kept because it documents
+> the loophole. Its test CSVs were replaced in `results/`; they are in git at `1fb4775`.
+
 Six runs of 10M decisions each, observation v2, on Daniel's PC (MAPPO 214–217 min, IPPO 131–200
 min). Best seed on validation: MAPPO s0 (53.4%; s1 52.7, s2 52.4) and IPPO s2 (52.0%; s0 44.4,
 s1 44.7). Per-seed test results are in `results/ppo/seeds/`, the selection in
@@ -208,6 +211,109 @@ scheduler deliver 100%.
 What does hold: MAPPO was more reliable than IPPO across seeds (all three MAPPO seeds 52–53% on
 validation, against two of three IPPO seeds stuck at 44%). The outage result is unchanged:
 learned robots have no coordinator, so an outage costs them nothing.
+
+## Fix: work-conserving robots (2026-11-11, option 1)
+
+**A robot may not park or wait while a task is claimable.** `work_conserving_mask` in
+`model.py` clears the park and wait slots in any row where a task slot is valid. NOOP and rows
+with nothing to claim are unchanged.
+- **It is applied inside `CandidateActor.logits`.** Every path that turns a mask into actions
+  goes through it: sampling in rollouts, the PPO update, behaviour cloning, validation and
+  greedy evaluation. Training and evaluation therefore use the same rule.
+- **It is saved with the checkpoint** (`meta["work_conserving"]`). New runs default to on.
+  Checkpoints without the key (the 2026-11-10 runs) load with it off and keep their behaviour.
+  `train_ppo.py --allow-idle` trains the old way.
+- **Why it cannot strand a robot.** A task slot is valid only for a box whose next station has
+  room (`open_tasks`), so the claim can always be carried out.
+- **No change to the BC data.** The teacher (BOTTLENECK/SPT) waits only when there is nothing
+  to claim, so its actions stay legal; BC still matches 100%.
+- **Effect.** Every order gets delivered, and PPO only decides which order a free robot takes
+  next. That is the same decision the rules and the auction make, so the comparison is now like
+  for like. Validation also logs delivered % and robot idle %.
+- **Tests** (`tests/methods/ppo/test_ppo.py`) cover the mask itself, the actor never idling
+  with a task available, teacher demos staying legal, the checkpoint flag and
+  backward-compatibility, and an untrained actor that prefers to idle still delivering every
+  order. The same actor without the mask delivers 0 of 10.
+
+**Smoke check** (250k decisions, 100 test seeds, on-time % / delivered %):
+
+| Scenario | BOTTLENECK/SPT | AUCTION/SPT | BC start | MAPPO smoke | IPPO smoke |
+|---|---|---|---|---|---|
+| `cell_random_10` | 49.7 / 100 | 51.9 / 100 | 49.8 / 100 | 50.7 / 100 | 49.9 / 100 |
+| `cell_random_10_disrupt` | 26.1 / 100 | 26.4 / 100 | 25.6 / 100 | 28.0 / 100 | 27.2 / 100 |
+| `cell_10_disrupt` | 10.2 / 100 | 11.0 / 100 | 10.3 / 100 | 14.3 / 100 | 13.3 / 100 |
+| `cell_10` (held out) | 20.0 / 100 | 20.0 / 100 | 20.0 / 100 | 20.0 / 100 | 20.0 / 100 |
+
+Robot idle time is back at the rules' level (19–31%), down from 61–79% for the abandoning
+policies.
+
+## Results with the fix (full runs, 2026-11-11)
+
+Six runs of 10M decisions each, work-conserving mask on, observation v2, on the Ubuntu PC
+(IPPO about 140 min, MAPPO about 225 min, 6–9 runs at once). Best seed on validation: MAPPO s0
+(36.5%; s1 35.8, s2 36.2) and IPPO s0 (36.8%; s1 35.3, s2 35.5). **Every learned policy
+delivers 100% of orders on every test scenario.** Test seeds, on-time %:
+
+| Scenario | Best rule | Best auction | Central (REPLAN) | IPPO | MAPPO | MAPPO vs best rule | MAPPO vs best auction |
+|---|---|---|---|---|---|---|---|
+| `cell_random_10` | 49.7 | 51.9 | 51.2 | 53.7 | 53.3 | +3.6 (p<0.001) | +1.4 (p=0.29) |
+| `cell_random_10_disrupt` | 26.8 | 26.4 | 31.0 | 33.3 | 32.7 | +5.9 (p<0.001) | +6.3 (p<0.001) |
+| `cell_10_disrupt` | 15.9 | 13.4* | 22.7 | 24.2 | 25.8 | +9.9 (p<0.001) | +12.5 (p<0.001) |
+| `cell_10` (held out) | 50.0 | 20.0 | 80.0 | 30.0 | 50.0 | 0.0 | +30.0 |
+| `cell_random_20` | 47.8 | 50.0 | 31.3 | 51.5 | 51.9 | +4.0 (p<0.001) | +1.9 (p=0.09) |
+| `cell_random_30` | 38.6 | 40.4 | 22.3 | 43.7 | 45.1 | +6.5 (p<0.001) | +4.7 (p<0.001) |
+| `cell_stream` | 43.2 | 45.5 | 27.9 | 47.0 | 48.2 | +5.0 (p<0.001) | +2.7 (p=0.02) |
+| `cell_random_10`, 2 robots | 21.0 | 20.9 | 25.8 | 24.4 | 25.0 | +4.0 (p<0.001) | +4.1 (p<0.001) |
+| `cell_random_10`, 3 robots | 34.7 | 36.0 | 37.0 | 42.5 | 40.7 | +6.0 (p<0.001) | +4.7 (p<0.001) |
+| `cell_10_outage` | 50.0 | 20.0 | 24.0 | 30.0 | 50.0 | 0.0 | +30.0 |
+
+\* `AUCTION_v0/EDD`; the fixed auction gets 11.5 here.
+
+- **A fair win over the best rule** on every random, disrupted, larger and smaller scenario
+  (MAPPO +3.6 to +9.9, all p<0.001), with every order delivered.
+- **Over the fixed auction** the gain is clear with breakdowns, other fleet sizes and 30
+  orders. On the nominal scenarios it is small (+1.4 to +2.7) and not always significant.
+- **Held-out `cell_10`:** the selected MAPPO seed ties the best rule (50%) and the selected
+  IPPO seed gets 30%. Across six seeds per method each seed gets either 30% or 50% on this one
+  fixed schedule (MAPPO 2 of 6 at 50%, IPPO 1 of 6), so this gap is mostly which seed was
+  selected. The central scheduler's 80% falls to 24% with one coordinator outage; the learned
+  robots are unaffected.
+- **MAPPO vs IPPO:** paired by test seed, no significant difference except `cell_10_disrupt`
+  (+1.7, p<0.001; +0.7 averaged over six seeds) and `cell_10` (see above). **The seeds agree
+  closely:** six seeds per method (3–5 are supplementary, not used for selection) all land
+  within 0.4–1.3 points (standard deviation) on every random and disrupted scenario, and even
+  the worst seed beats the best rule on all of them. The earlier "MAPPO is more reliable"
+  observation came from the abandoning runs and no longer holds.
+- **Behaviour cloning is not needed for the final result.** Ablation with `--bc-decisions 0`
+  (IPPO s0, s1, MAPPO s0, 10M decisions): the first checkpoint is worse (validation about 23%
+  vs 26%), but the runs catch up within a few hundred thousand decisions and land inside the
+  BC runs' seed range on every test scenario (`cell_random_10` 52.6–54.6%). The gain over the
+  rules comes from PPO, not from copying the teacher. Supplementary (1–2 seeds per arm);
+  results in `results/ppo/ablation_nobc/`.
+- Per-seed results: `results/ppo/seeds/` (s0–s2 used for selection, s3–s5 supplementary);
+  selection: `results/ppo/selection.json`; every controller with delivered %:
+  `results/summary.md`.
+
+## Running on the Ubuntu PC (from 2026-11-11)
+
+Dell Precision 5860, Xeon w3-2423 (6 cores / 12 threads), Ubuntu, Python 3.13 venv, CPU torch.
+Baselines reproduce exactly (`check_repro`: 1,600 episodes, 0 differ). From the repo root:
+
+```bash
+# PYTHONPATH=src also overrides the ROS Humble paths the shell exports.
+export PYTHONPATH=src
+mkdir -p runs/ppo
+for s in 0 1 2; do for c in central local; do
+  m=$([ $c = central ] && echo MAPPO || echo IPPO)
+  nohup .venv/bin/python scripts/train_ppo.py --critic $c --seed $s --budget 10000000 \
+    --eval-every 100000 --threads 1 > runs/ppo/${m}_s$s.log 2> runs/ppo/${m}_s$s.err &
+done; done
+tail -f runs/ppo/MAPPO_s0.log                 # one validation line per 100k decisions
+pkill -f train_ppo.py                         # stop all runs
+
+# Evaluation: one torch thread per worker, or each worker grabs several and slows everything.
+OMP_NUM_THREADS=1 .venv/bin/python -m som.methods.ppo.finalize --workers 6
+```
 
 ## Requests to main
 
