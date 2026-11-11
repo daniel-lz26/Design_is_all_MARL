@@ -30,6 +30,20 @@ def _lin(i: int, o: int, gain: float = float(np.sqrt(2))) -> nn.Linear:
     return lin
 
 
+def work_conserving_mask(mask: torch.Tensor, k: int) -> torch.Tensor:
+    """Clear park (slot ``k``) and wait (``k + 1``) in every row where a task slot is valid.
+
+    A robot may then only idle when there is nothing to pick up, like the rules and the auction.
+    Without this, the spec §8 reward lets a learner leave late orders undelivered almost for
+    free (order abandonment, see docs/method_ppo.md). A claimable task always exists when a slot
+    is valid (``open_tasks`` only lists boxes whose next station has room), so no row is left
+    without a legal action. NOOP (``k + 2``) is untouched."""
+    any_task = (mask[..., :k] != 0).any(-1, keepdim=True)
+    out = mask.clone()
+    out[..., k : k + 2] = out[..., k : k + 2].masked_fill(any_task, 0)
+    return out
+
+
 def mlp(i: int, hidden: Sequence[int], o: int, out_gain: float) -> nn.Sequential:
     layers: list[nn.Module] = []
     d = i
@@ -58,11 +72,17 @@ class ObsNorm(nn.Module):
 
 
 class CandidateActor(nn.Module):
-    def __init__(self, layout: ObsLayout, hidden: int = 128) -> None:
+    """``work_conserving`` applies :func:`work_conserving_mask` inside :meth:`logits`, the one
+    place every path (sampling in rollouts, the PPO update, behaviour cloning and greedy
+    evaluation) turns a mask into action probabilities, so training and evaluation always match.
+    Checkpoints from before the fix load with it off and keep their original behaviour."""
+
+    def __init__(self, layout: ObsLayout, hidden: int = 128, work_conserving: bool = False) -> None:
         super().__init__()
         if layout.mode == "global":
             raise ValueError("the PPO actor is decentralized; use obs_mode board or local")
         self.lay = layout
+        self.work_conserving = work_conserving
         self.n_task = len(TASK_FEATURES)
         self.n_other = (layout.global_at - layout.others_at) // (layout.max_robots - 1)
         self.norm = ObsNorm(layout.dim)
@@ -97,6 +117,8 @@ class CandidateActor(nn.Module):
         ).squeeze(-1)
         noop = torch.zeros(b, 1, dtype=scores.dtype)
         out = torch.cat([scores, self.idle(ctx), noop], -1)
+        if self.work_conserving:
+            mask = work_conserving_mask(mask, lay.k)
         return out.masked_fill(mask == 0, MASKED_LOGIT)
 
     def dist(self, raw: torch.Tensor, mask: torch.Tensor) -> torch.distributions.Categorical:

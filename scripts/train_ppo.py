@@ -41,6 +41,11 @@ def main() -> None:
     ap.add_argument("--n-envs", type=int)
     ap.add_argument("--eval-every", type=int)
     ap.add_argument("--threads", type=int, help="torch threads (1 per run when running several)")
+    ap.add_argument(
+        "--allow-idle",
+        action="store_true",
+        help="let robots park/wait while a task is claimable (pre-2026-11-11 behaviour)",
+    )
     args = ap.parse_args()
 
     method = "MAPPO" if args.critic == "central" else "IPPO"
@@ -54,6 +59,7 @@ def main() -> None:
         "n_envs": args.n_envs,
         "eval_every": args.eval_every,
         "threads": args.threads,
+        "work_conserving": False if args.allow_idle else None,
     }
     cfg = PPOConfig(**{k: v for k, v in over.items() if v is not None})
     run_dir = args.out / cfg.name

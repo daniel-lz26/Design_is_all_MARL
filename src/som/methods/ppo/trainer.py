@@ -46,6 +46,8 @@ class PPOConfig:
     seed: int = 0
     scenarios: list[str] = field(default_factory=lambda: list(TRAIN_MIX))
     machine_rule: str = "SPT"
+    # park/wait masked out while a task is claimable (fix for order abandonment, 2026-11-11)
+    work_conserving: bool = True
     budget: int = 1_500_000  # env decisions: demonstrations + PPO (spec §11.2)
     # behaviour cloning
     teacher: str = "BOTTLENECK/SPT"
@@ -91,7 +93,7 @@ class PPOTrainer:
         probe.reset(seed=0)
         self.layout = probe.enc.layout
         cdim = self.layout.dim + (len(probe.state()) if self.central else 0)
-        self.actor = CandidateActor(self.layout, cfg.hidden)
+        self.actor = CandidateActor(self.layout, cfg.hidden, cfg.work_conserving)
         self.critic = Critic(cdim)
         self.vnorm = RunningMeanStd()
         self.opt = torch.optim.Adam(
@@ -120,6 +122,7 @@ class PPOTrainer:
             "obs_version": CELL_OBS_VERSION,
             "layout": asdict(self.layout),
             "hidden": c.hidden,
+            "work_conserving": c.work_conserving,
             "trained_on": c.scenarios,
             "teacher": c.teacher if c.bc_decisions else None,
             "decisions_used": self.used,

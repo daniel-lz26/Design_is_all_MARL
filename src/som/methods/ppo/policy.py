@@ -45,7 +45,7 @@ class PPOPolicy:
         if name is not None and meta.get("method") not in (None, name):
             raise ValueError(f"{p} is a {meta.get('method')} checkpoint, not {name}")
         lay = ObsLayout(**meta["layout"])
-        actor = CandidateActor(lay, meta["hidden"])
+        actor = CandidateActor(lay, meta["hidden"], bool(meta.get("work_conserving", False)))
         actor.load_state_dict(ck["actor"])
         return cls(actor, meta, name)
 
