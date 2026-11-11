@@ -149,6 +149,8 @@ class PPOTrainer:
             out[s] = {
                 "on_time_pct": float(np.mean([m.on_time_pct for m in ms])),
                 "mean_tardiness": float(np.mean([m.mean_tardiness for m in ms])),
+                "delivered_pct": float(np.mean([100.0 * m.delivered / m.n_orders for m in ms])),
+                "robot_idle_pct": float(np.mean([100.0 * m.robot_util["idle"] for m in ms])),
             }
         self.actor.train()
         return out
@@ -306,6 +308,8 @@ class PPOTrainer:
         res = self.validate()
         on = float(np.mean([r["on_time_pct"] for r in res.values()]))
         tard = float(np.mean([r["mean_tardiness"] for r in res.values()]))
+        dlv = float(np.mean([r["delivered_pct"] for r in res.values()]))
+        idle = float(np.mean([r["robot_idle_pct"] for r in res.values()]))
         evals.write(
             {
                 "decisions": self.used,
@@ -313,6 +317,8 @@ class PPOTrainer:
                 "seconds": seconds,
                 "val_on_time_pct": on,
                 "val_tardiness": tard,
+                "val_delivered_pct": dlv,
+                "val_robot_idle_pct": idle,
                 **{f"{s}/on_time_pct": r["on_time_pct"] for s, r in res.items()},
             }
         )
@@ -326,6 +332,7 @@ class PPOTrainer:
         log(
             f"[{self.used:>8} dec  {seconds / 60:5.1f} min]{train}  val {on:.1f}% "
             + " ".join(f"{s.replace('cell_', '')} {r['on_time_pct']:.1f}" for s, r in res.items())
+            + f"  delivered {dlv:.1f}% idle {idle:.0f}%"
             + tag
         )
 
