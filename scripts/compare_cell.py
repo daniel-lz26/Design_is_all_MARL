@@ -2,7 +2,8 @@
 
     python scripts/compare_cell.py [--results results]
 
-Writes results/summary.md (per scenario: every controller with mean ± 95% CI over its seeds,
+Writes results/summary.md (per scenario: every controller with mean ± 95% CI over its seeds
+(on-time % next to delivered %, the share of orders that reach shipping at all),
 the best family-A rule marked, paired differences vs the best rule and vs the best auction
 with bootstrap p-values, and the nominal -> disrupt robustness table), results/summary.csv and
 results/heatmap_on_time.png. A new method shows up as soon as its results folder exists.
@@ -45,6 +46,11 @@ def load(results: Path) -> dict[str, dict[str, dict[int, dict[str, str]]]]:
 
 def col(rows: dict[int, dict[str, str]], key: str) -> list[float]:
     return [float(r[key]) for r in rows.values() if r[key] not in ("", "nan")]
+
+
+def delivered_pct(rows: dict[int, dict[str, str]]) -> list[float]:
+    """Share of orders that reach shipping at all, per seed (on-time % counts every order)."""
+    return [100.0 * float(r["delivered"]) / float(r["n_orders"]) for r in rows.values()]
 
 
 def paired(
@@ -108,9 +114,9 @@ def main() -> None:
         md += [
             f"## {tag}",
             "",
-            "| Controller | Fam | n | On-time % | Mean tardiness (s) | "
+            "| Controller | Fam | n | On-time % | Delivered % | Mean tardiness (s) | "
             "Makespan (s) | Blocked trips | Recovery (s) | vs best rule | vs best auction |",
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         shown = [p for p in pols if family(pols[p]) != "A" or p == best_a]
         for p in sorted(shown, key=lambda p: (family(pols[p]), p)):
@@ -125,7 +131,8 @@ def main() -> None:
             name = f"**{p}** (best A)" if p == best_a else p
             md.append(
                 f"| {name} | {family(rows)} | {len(rows)} | {fmt(col(rows, 'on_time_pct'))} | "
-                f"{fmt(col(rows, 'mean_tardiness'))} | {fmt(col(rows, 'makespan'), 0)} | "
+                f"{fmt(delivered_pct(rows))} | {fmt(col(rows, 'mean_tardiness'))} | "
+                f"{fmt(col(rows, 'makespan'), 0)} | "
                 f"{fmt(col(rows, 'blocked_trips'))} | {fmt(col(rows, 'recovery_time'))} | "
                 f"{cells[0]} | {cells[1]} |"
             )
@@ -137,6 +144,7 @@ def main() -> None:
                     "family": family(rows),
                     "n": len(rows),
                     "on_time_pct": np.mean(col(rows, "on_time_pct")),
+                    "delivered_pct": np.mean(delivered_pct(rows)),
                     "mean_tardiness": np.mean(col(rows, "mean_tardiness")),
                     "makespan": np.mean(col(rows, "makespan")),
                 }
