@@ -160,9 +160,54 @@ check the baselines reproduce first:
 - Then run `python -m som.methods.ppo.check_repro runs/repro`, which must end "0 differ, 0 missing".
 - Launch with the same `train_ppo.py` arguments, using `nohup ... &` in place of `Start-Process`.
 
-## Results
+## Results (full runs, 2026-11-10): not valid as a win, the policies abandon orders
 
-(after the full runs)
+Six runs of 10M decisions each, observation v2, on Daniel's PC (MAPPO 214–217 min, IPPO 131–200
+min). Best seed on validation: MAPPO s0 (53.4%; s1 52.7, s2 52.4) and IPPO s2 (52.0%; s0 44.4,
+s1 44.7). Per-seed test results are in `results/ppo/seeds/`, the selection in
+`results/ppo/selection.json` and every controller in `results/summary.md`.
+
+**The on-time % looks like a large win, but it is reward hacking.** Both learned policies
+deliver the orders they can get there on time and then leave the rest undelivered until the
+episode is cut off at `t_max`. Robots sit idle 60–84% of the time, against 11–31% for the
+auction. Test seeds:
+
+| Scenario | Fixed auction on-time % | MAPPO on-time % | MAPPO on-time orders (auction) | MAPPO orders delivered | MAPPO robots idle |
+|---|---|---|---|---|---|
+| `cell_random_10` | 51.9 | 64.2 | 6.4 (5.2) | 71% | 76% |
+| `cell_random_10_disrupt` | 26.4 | 47.4 | 5.0 (2.8) | 51% | 61% |
+| `cell_10_disrupt` | 11.5 | 47.0 | 4.9 (1.2) | 49% | 62% |
+| `cell_10` (held out) | 20.0 (best rule 50.0) | 60.0 | 6.0 (2.0) | 70% | 79% |
+| `cell_random_30` | 40.4 | 45.1 | 13.5 (12.1) | 49% | 84% |
+| `cell_random_10_2r` | 20.9 | 35.3 | 3.5 (2.1) | 38% | 76% |
+
+IPPO behaves the same: it delivers 44–69% of orders. Every rule, auction and the central
+scheduler deliver 100%.
+
+- **The extra on-time orders are real.** The on-time % divides by all orders, so MAPPO really
+  does get more orders there on time. It does that by giving up on the rest, which no real cell
+  can accept. The huge tardiness and makespan columns (makespan = `t_max`) in `summary.md` show
+  it.
+- **Why the reward allows it.** The spec §8 reward pays +10 per on-time delivery. A late order
+  costs at most −5 (capped at 150 s of tardiness), plus −0.01 per second while it is overdue.
+  With γ = 0.995 per second, a penalty 500 s away is worth 8% of its face value, and the
+  truncation penalty at `t_max` (about 1,000 s later) about 0.7%. So abandoning a late order is
+  almost free, while delivering it costs robot time that could serve an order still on time.
+- **This is a reward-design problem, not a trainer bug.** The rules and the auction cannot
+  abandon an order, because they always claim a task when one is available, so they never
+  exposed it.
+- **Not yet presentable as a result.** Fix options (decision needed):
+  1. *Method side (no env change):* mask park and wait while a task is claimable, so robots are
+     work-conserving like the rules. Every order then gets delivered and PPO only chooses the
+     order. Needs a retrain (about 3.6 h for all six).
+  2. *Env side (on `main`, `env-v1.3`):* make abandoning expensive, for example an uncapped late
+     penalty or a per-undelivered-order penalty applied as it happens. This changes the reward
+     for the GP track too.
+  3. In every case, report "orders delivered %" next to on-time %.
+
+What does hold: MAPPO was more reliable than IPPO across seeds (all three MAPPO seeds 52–53% on
+validation, against two of three IPPO seeds stuck at 44%). The outage result is unchanged:
+learned robots have no coordinator, so an outage costs them nothing.
 
 ## Requests to main
 

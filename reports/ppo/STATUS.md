@@ -51,32 +51,45 @@ the robots learn which order to pick up next by trial and error in the simulated
     unaffected.
   - Table: "Coordinator outage" in [results/summary.md](../../results/summary.md).
 
+- **The six full PPO runs finished** (10M decisions each, 2.2–3.6 h). Best seed on validation:
+  MAPPO s0 and IPPO s2, both evaluated on every scenario.
+
 ## Running now
-- **The six full PPO runs** (IPPO and MAPPO × seeds 0, 1, 2; 10M decisions each) on Daniel's PC.
-  - Started 2026-11-10 at 12:10; expected to finish around 16:00–17:15.
-  - Progress: `runs/ppo/<RUN>/train.log` prints one validation line every 100k decisions.
+- Nothing.
 
-## Latest results
-On-time % on 100 test scenarios, **observation v2, smoke run only** (250k decisions).
-- The "best auction" is the fixed one. It is now the strongest baseline on `cell_random_10`.
-- Full table, including the old v1 numbers:
-  [smoke_test_seeds.md](../../results/ppo/smoke_test_seeds.md).
+## Latest results: the learned robots abandon orders
+On 100 test scenarios, full runs. "Delivered" is the share of orders that reach shipping at all.
+Every rule, the auction and the central scheduler deliver 100%.
 
-| Scenario | Best rule | Best auction | MAPPO (smoke) | IPPO (smoke) |
-|---|---|---|---|---|
-| cell_random_10 | 49.7 | 51.9 | 50.0 | 51.4 |
-| cell_random_10_disrupt | 26.8 | 26.4 | 28.5 | 28.4 |
-| cell_10_disrupt | 15.9 | 11.5 | 17.1 | 14.9 |
+| Scenario | Best rule | Best auction | MAPPO on-time % | MAPPO delivered | IPPO on-time % | IPPO delivered |
+|---|---|---|---|---|---|---|
+| cell_random_10 | 49.7 | 51.9 | 64.2 | 71% | 62.9 | 69% |
+| cell_random_10_disrupt | 26.8 | 26.4 | 47.4 | 51% | 47.4 | 53% |
+| cell_10_disrupt | 15.9 | 11.5 | 47.0 | 49% | 41.4 | 44% |
+| cell_10 (held out) | 50.0 | 20.0 | 60.0 | 70% | 50.0 | 60% |
 
-Plots: [learning curves](../../results/ppo/smoke_learning_curves.png).
+- **The on-time % looks like a big win but isn't one.** The robots deliver the orders that can
+  still be on time, then sit idle (60–84% of the time) and never deliver the rest.
+- **Cause: the reward has a loophole** ("reward hacking"). A late order costs at most a small,
+  capped penalty, and the penalty for never delivering it comes so far in the future that the
+  learner barely counts it. The rules and the auction always pick up a waiting order, so they
+  never showed this.
+- **What still holds:** MAPPO was more reliable than IPPO (all three MAPPO seeds trained well;
+  two of three IPPO seeds got stuck), and learned robots don't depend on a coordinator.
+- Details and fix options: [docs/method_ppo.md](../../docs/method_ppo.md). All controllers:
+  [results/summary.md](../../results/summary.md). Smoke-run plots:
+  [learning curves](../../results/ppo/smoke_learning_curves.png).
 
 ## Blockers / decisions needed
-- None blocking.
-- **GP track:** merge `main` (`env-v1.2`) before starting its 10M runs; see decision 5.
+- **Pick a fix for order abandonment before retraining:**
+  1. PPO side: a robot may not park or wait while an order is available to pick up, so every
+     order gets delivered (no env change, about 3.6 h to retrain).
+  2. Env side (`main`, `env-v1.3`): change the reward so undelivered orders keep costing a lot.
+     This also changes the GP track's reward.
+- **GP track:** merge `main` (`env-v1.2`) before its 10M runs (decision 5), and report
+  "delivered %" too; the same loophole is open to it.
 
 ## Next steps
-1. Pass both smoke checks on observation v2, then estimate the run time and start the 6 full
-   PPO runs on Daniel's PC.
-2. When they finish: pick the best seed per method on validation, evaluate on every scenario,
-   and compare with the rules, both auctions and the central scheduler.
-3. Fleet-size and outage comparisons for the presentation (Nov 21).
+1. Apply the chosen fix, retrain the six runs and re-evaluate, reporting delivered % next to
+   on-time %.
+2. Fleet-size and outage comparisons for the presentation (Nov 21).
