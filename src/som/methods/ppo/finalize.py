@@ -62,7 +62,10 @@ def main() -> None:
                 out = results / "ppo" / "seeds" / f"s{s}"
                 evaluate(method, args.runs / f"{method}_s{s}" / "best", out, args.workers)
     (results / "ppo").mkdir(parents=True, exist_ok=True)
-    (results / "ppo" / "selection.json").write_text(json.dumps(selection, indent=2))
+    sel_path = results / "ppo" / "selection.json"
+    if sel_path.exists():  # keep methods finalized in an earlier call (e.g. IPPO before MAPPO)
+        selection = {**json.loads(sel_path.read_text(encoding="utf-8")), **selection}
+    sel_path.write_text(json.dumps(selection, indent=2))
     compare = [sys.executable, str(ROOT / "scripts" / "compare_cell.py"), "--results", str(results)]
     subprocess.run(compare, check=True)
 
